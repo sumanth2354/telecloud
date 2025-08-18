@@ -1,0 +1,5 @@
+Flask==2.3.3
+python-dotenv==1.0.0
+Telethon==1.32.1
+cryptography==41.0.7
+Werkzeug==2.3.7 

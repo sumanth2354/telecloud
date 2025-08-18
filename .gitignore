@@ -1,0 +1,17 @@
+# Environment
+.env
+
+# Sessions
+sessions/
+
+# Logs
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+
+# System/Editor files
+.git
+.DS_Store
+Thumbs.db

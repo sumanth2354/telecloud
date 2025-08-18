@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Consent</title>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .consent-box { border: 2px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 5px; }
+        .checkbox-group { margin: 15px 0; }
+        .btn { padding: 10px 20px; margin: 5px; border: none; border-radius: 3px; cursor: pointer; }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-secondary { background-color: #6c757d; color: white; }
+        .error { color: red; display: none; }
+    </style>
+</head>
+<body>
+    <h1>🔐 User Consent Required</h1>
+    
+    <div class="consent-box">
+        <h2>Before using this service, please read and accept:</h2>
+        
+        <div class="checkbox-group">
+            <input type="checkbox" id="consent1" required>
+            <label for="consent1">I consent to the collection and processing of my phone number for Telegram authentication</label>
+        </div>
+        
+        <div class="checkbox-group">
+            <input type="checkbox" id="consent2" required>
+            <label for="consent2">I consent to the temporary storage and processing of my files for upload to Telegram</label>
+        </div>
+        
+        <div class="checkbox-group">
+            <input type="checkbox" id="consent3" required>
+            <label for="consent3">I consent to the storage of encrypted session data for maintaining my login</label>
+        </div>
+        
+        <div class="checkbox-group">
+            <input type="checkbox" id="consent4" required>
+            <label for="consent4">I have read and agree to the <a href="/privacy-policy" target="_blank">Privacy Policy</a></label>
+        </div>
+        
+        <div class="checkbox-group">
+            <input type="checkbox" id="consent5" required>
+            <label for="consent5">I understand that this service acts as a bridge to my Telegram account and I use it at my own risk</label>
+        </div>
+        
+        <p class="error" id="error-msg">Please accept all consent items to continue.</p>
+        
+        <button class="btn btn-primary" onclick="acceptConsent()">Accept and Continue</button>
+        <button class="btn btn-secondary" onclick="declineConsent()">Decline</button>
+    </div>
+    
+    <script>
+        function acceptConsent() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+            
+            if (!allChecked) {
+                document.getElementById('error-msg').style.display = 'block';
+                return;
+            }
+            
+            // Store consent in localStorage
+            localStorage.setItem('user_consent', 'true');
+            localStorage.setItem('consent_date', new Date().toISOString());
+            
+            // Redirect to login
+            window.location.href = '/login';
+        }
+        
+        function declineConsent() {
+            alert('You must accept the terms to use this service.');
+            window.location.href = '/';
+        }
+        
+        // Check if user already consented
+        if (localStorage.getItem('user_consent') === 'true') {
+            window.location.href = '/login';
+        }
+    </script>
+</body>
+</html> 

