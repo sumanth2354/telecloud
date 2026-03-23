@@ -1,58 +1,110 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-  <title>Login with Telegram</title>
+  <title>Login | Secure Cloud</title>
   <meta charset="UTF-8" />
+  <link rel="stylesheet" href="/static/style.css">
 </head>
+
 <body>
-  <h2>🔐 Login with Telegram</h2>
+  <div class="center-screen">
+    <div class="glass-container max-w-md fade-in">
+      <div class="text-center mb-4">
+        <div style="margin-bottom: 10px; color: var(--accent-color);">
+          <span class="material-symbols-rounded" style="font-size: 3rem;">lock</span>
+        </div>
+        <h2 class="logo">Secure Login</h2>
+        <p style="opacity: 0.7;">Authenticate via Telegram</p>
+      </div>
 
-  <div id="step1">
-    <label>📱 Phone Number (with +91):</label><br>
-    <input type="text" id="phone" placeholder="+91XXXXXXXXXX" required><br><br>
-    <button onclick="sendCode()">Send OTP</button>
+      <!-- Step 1: Phone -->
+      <div id="step1">
+        <label style="display:block; margin-bottom:8px; font-weight:600;">
+          <span class="material-symbols-rounded" style="font-size:1.2em; vertical-align:bottom;">smartphone</span> Phone
+          Number
+        </label>
+        <div style="margin-bottom: 20px;">
+          <input type="text" id="phone" value="+91" required>
+        </div>
+        <button class="btn btn-primary" style="width:100%" onclick="sendCode()">Send One-Time Password</button>
+      </div>
+
+      <!-- Step 2: OTP -->
+      <div id="step2" style="display:none;">
+        <label style="display:block; margin-bottom:8px; font-weight:600;">
+          <span class="material-symbols-rounded" style="font-size:1.2em; vertical-align:bottom;">vpn_key</span> Enter
+          OTP Code
+        </label>
+        <div style="margin-bottom: 20px;">
+          <input type="text" id="otp" placeholder="e.g. 12345" required
+            style="letter-spacing: 4px; text-align: center; font-size: 1.2rem;">
+        </div>
+        <button class="btn btn-primary" style="width:100%" onclick="verifyCode()">Verify & Login</button>
+        <div class="text-center mt-4">
+          <a href="#" onclick="location.reload()" style="font-size: 0.9rem;">Wrong number? Start over</a>
+        </div>
+      </div>
+
+      <!-- Step 3: 2FA -->
+      <div id="step3" style="display:none;">
+        <label style="display:block; margin-bottom:8px; font-weight:600;">
+          <span class="material-symbols-rounded" style="font-size:1.2em; vertical-align:bottom;">security</span>
+          Two-Step Verification
+        </label>
+        <div style="margin-bottom: 20px;">
+          <input type="password" id="password" placeholder="Enter your cloud password" required>
+        </div>
+        <button class="btn btn-primary" style="width:100%" onclick="verifyPassword()">Unlock Account</button>
+      </div>
+
+      <div id="status" class="status-msg" style="display:none;"></div>
+    </div>
   </div>
-
-  <div id="step2" style="display:none;">
-    <label>🔑 Enter OTP:</label><br>
-    <input type="text" id="otp" placeholder="12345" required><br><br>
-    <button onclick="verifyCode()">Verify OTP</button>
-  </div>
-
-  <div id="step3" style="display:none;">
-    <label>🔐 Enter 2FA Password:</label><br>
-    <input type="password" id="password" placeholder="Telegram password" required><br><br>
-    <button onclick="verifyPassword()">Submit Password</button>
-  </div>
-
-  <p id="status"></p>
 
   <script>
+    function showStatus(msg, type) {
+      const el = document.getElementById("status");
+      el.style.display = "block";
+      el.innerText = msg;
+      el.className = "status-msg " + (type === 'error' ? 'status-error' : 'status-success');
+    }
+
     function sendCode() {
       const phone = document.getElementById("phone").value.trim();
+      const btn = document.querySelector('#step1 button');
+
       if (!phone.startsWith("+")) {
-        alert("Please include +91 or your country code.");
+        showStatus("Please include country code (e.g., +1)", "error");
         return;
       }
+
+      btn.disabled = true;
+      btn.innerText = "Sending...";
 
       fetch("/send_code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: phone })
       })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === "code_sent") {
-          document.getElementById("step1").style.display = "none";
-          document.getElementById("step2").style.display = "block";
-          document.getElementById("status").innerText = "✅ OTP sent to Telegram!";
-        } else {
-          document.getElementById("status").innerText = "❌ " + data.message;
-        }
-      })
-      .catch(() => {
-        document.getElementById("status").innerText = "❌ Network error.";
-      });
+        .then(res => res.json())
+        .then(data => {
+          btn.disabled = false;
+          btn.innerText = "Send One-Time Password";
+
+          if (data.status === "code_sent") {
+            document.getElementById("step1").style.display = "none";
+            document.getElementById("step2").style.display = "block";
+            document.getElementById("step2").classList.add("fade-in");
+            showStatus("✅ OTP sent to your Telegram app!", "success");
+          } else {
+            showStatus("❌ " + data.message, "error");
+          }
+        })
+        .catch(() => {
+          btn.disabled = false;
+          showStatus("❌ Network error. Check connection.", "error");
+        });
     }
 
     function verifyCode() {
@@ -64,23 +116,22 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: phone, code: code })
       })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === "success") {
-          localStorage.setItem("telegram_phone", phone);
-          document.getElementById("status").innerText = "✅ Login successful!";
-          window.location.href = "/upload-page";
-        } else if (data.status === "2fa_required") {
-          document.getElementById("step2").style.display = "none";
-          document.getElementById("step3").style.display = "block";
-          document.getElementById("status").innerText = "🔐 Enter your 2FA password.";
-        } else {
-          document.getElementById("status").innerText = "❌ OTP incorrect or expired.";
-        }
-      })
-      .catch(() => {
-        document.getElementById("status").innerText = "❌ Network error.";
-      });
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "success") {
+            localStorage.setItem("telegram_phone", phone);
+            showStatus("✅ Login successful! Redirecting...", "success");
+            setTimeout(() => window.location.href = "/upload-page", 1000);
+          } else if (data.status === "2fa_required") {
+            document.getElementById("step2").style.display = "none";
+            document.getElementById("step3").style.display = "block";
+            document.getElementById("step3").classList.add("fade-in");
+            showStatus("🔐 2FA Protected. Please enter password.", "success");
+          } else {
+            showStatus("❌ Invalid OTP or session expired.", "error");
+          }
+        })
+        .catch((e) => showStatus("❌ Error: " + e, "error"));
     }
 
     function verifyPassword() {
@@ -92,20 +143,18 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: phone, password: password })
       })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === "success") {
-          localStorage.setItem("telegram_phone", phone);
-          document.getElementById("status").innerText = "✅ Logged in!";
-          window.location.href = "/upload-page";
-        } else {
-          document.getElementById("status").innerText = "❌ 2FA password incorrect.";
-        }
-      })
-      .catch(() => {
-        document.getElementById("status").innerText = "❌ Network error.";
-      });
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "success") {
+            localStorage.setItem("telegram_phone", phone);
+            showStatus("✅ Authenticated! Redirecting...", "success");
+            setTimeout(() => window.location.href = "/upload-page", 1000);
+          } else {
+            showStatus("❌ Incorrect password.", "error");
+          }
+        });
     }
   </script>
 </body>
+
 </html>

@@ -5,6 +5,7 @@ import os
 import asyncio
 import uuid
 import json
+from dotenv import load_dotenv
 import time
 import hashlib
 import logging
@@ -13,14 +14,16 @@ from security import (
     rate_limit, validate_phone_number, validate_file_upload, 
     sanitize_input, log_security_event
 )
-
+load_dotenv()
 # API credentials
-api_id = 21238942
-api_hash = "c9d04653ba38ac4c8e226b0913cbe9f9"
+api_id = int(os.getenv("API_ID"))
+api_hash = os.getenv("API_HASH")
 
-# Generate encryption key
-SECRET_KEY = Fernet.generate_key()
-cipher = Fernet(SECRET_KEY)
+# Load encryption key
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("No SECRET_KEY set for Flask application")
+cipher = Fernet(SECRET_KEY.encode())
 
 app = Flask(__name__)
 
@@ -77,16 +80,25 @@ def cleanup_expired_sessions():
 def load_user_folders():
     if os.path.exists(FOLDERS_FILE):
         try:
-            with open(FOLDERS_FILE, 'r') as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            logger.error("Error reading user folders file")
+            with open(FOLDERS_FILE, 'rb') as f:
+                encrypted_data = f.read()
+            decrypted_data = cipher.decrypt(encrypted_data)
+            return json.loads(decrypted_data)
+        except Exception:
+            # Fallback for unencrypted data or errors
+            try:
+                with open(FOLDERS_FILE, 'r') as f:
+                    return json.load(f)
+            except:
+                logger.error("Error reading user folders file")
     return {}
 
 def save_user_folders(folders_data):
     try:
-        with open(FOLDERS_FILE, 'w') as f:
-            json.dump(folders_data, f, indent=2)
+        json_data = json.dumps(folders_data).encode()
+        encrypted_data = cipher.encrypt(json_data)
+        with open(FOLDERS_FILE, 'wb') as f:
+            f.write(encrypted_data)
     except Exception as e:
         logger.error(f"Error saving user folders: {e}")
 
@@ -144,9 +156,9 @@ def send_code():
                 log_security_event("OTP_ERROR", str(e), phone)
                 return {"status": "error", "message": "Failed to send OTP"}
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(main())
+        # if os.name == 'nt':
+        #    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        result = asyncio.run(main())
         return jsonify(result)
         
     except Exception as e:
@@ -198,9 +210,9 @@ def verify_code():
                 log_security_event("LOGIN_FAILED", str(e), phone)
                 return {"status": "failed", "error": "Invalid OTP or session expired"}
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(main())
+        # if os.name == 'nt':
+        #    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        result = asyncio.run(main())
         return jsonify(result)
         
     except Exception as e:
@@ -245,9 +257,9 @@ def verify_password():
                 log_security_event("2FA_FAILED", str(e), phone)
                 return {"status": "failed", "error": "Invalid password"}
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(main())
+        # if os.name == 'nt':
+        #    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        result = asyncio.run(main())
         return jsonify(result)
         
     except Exception as e:
@@ -293,7 +305,7 @@ def upload():
                     file_path = os.path.join(UPLOAD_FOLDER, filename)
                     file.save(file_path)
                     
-                    await client.send_file("me", file_path, caption=folder_name or "")
+                    await client.send_file("me", file_path, caption=folder_name or "", force_document=True)
                     uploaded_files.append(file.filename)
                     
                     # Save folder to user folders if not already saved
@@ -321,9 +333,9 @@ def upload():
             log_security_event("FILES_UPLOADED", f"Uploaded {len(uploaded_files)} files", phone)
             return {"status": "success", "files": uploaded_files}
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(main())
+        # if os.name == 'nt':
+        #    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        result = asyncio.run(main())
         return jsonify(result)
         
     except Exception as e:
@@ -446,9 +458,9 @@ def list_files_in_folder():
                 logger.error(f"LIST FILES IN FOLDER ERROR: {e}")
                 return {"status": "error", "message": str(e)}
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(main())
+        # if os.name == 'nt':
+        #    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        result = asyncio.run(main())
         return jsonify(result)
         
     except Exception as e:
@@ -481,9 +493,9 @@ def get_file(phone, msg_id):
                 logger.error(f"GET FILE ERROR: {e}")
                 return None, None, None
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        file_bytes, mime_type, file_name = loop.run_until_complete(main())
+        # if os.name == 'nt':
+        #    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        file_bytes, mime_type, file_name = asyncio.run(main())
         
         if file_bytes is None:
             return "File not found", 404
@@ -566,4 +578,7 @@ if __name__ == '__main__':
     # Clean up expired sessions on startup
     cleanup_expired_sessions()
     
+    if os.name == 'nt':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        
     app.run(host='127.0.0.1', port=5000, debug=False) 
