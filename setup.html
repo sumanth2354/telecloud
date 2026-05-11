@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Setup Your Telegram Access</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --border: #dbe3ef;
+      --success-bg: #ecfdf3;
+      --success-text: #067647;
+      --error-bg: #fef3f2;
+      --error-text: #b42318;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at 10% 10%, #eaf2ff 0%, var(--bg) 45%, #eef3f9 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 760px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 28px;
+      box-shadow: 0 16px 38px rgba(31, 41, 55, 0.1);
+    }
+
+    h1 {
+      margin: 0 0 10px 0;
+      font-size: 1.8rem;
+      line-height: 1.2;
+    }
+
+    .desc {
+      margin: 0 0 22px 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .section-title {
+      margin: 0 0 12px 0;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .steps {
+      margin: 0 0 18px 0;
+      padding-left: 20px;
+      color: #334155;
+      line-height: 1.65;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .form {
+      display: grid;
+      gap: 12px;
+    }
+
+    label {
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      background: #fff;
+    }
+
+    input:focus {
+      border-color: #8bb3ff;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+
+    .status {
+      display: none;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.92rem;
+      margin-top: 8px;
+      border: 1px solid transparent;
+    }
+
+    .status.show {
+      display: block;
+    }
+
+    .status.success {
+      background: var(--success-bg);
+      color: var(--success-text);
+      border-color: #abefc6;
+    }
+
+    .status.error {
+      background: var(--error-bg);
+      color: var(--error-text);
+      border-color: #fecdca;
+    }
+
+    .status.loading {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border-color: #bfdbfe;
+    }
+
+    .notes {
+      margin-top: 20px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .notes ul {
+      margin: 8px 0 0 18px;
+      padding: 0;
+    }
+
+    @media (max-width: 640px) {
+      .card {
+        padding: 20px;
+        border-radius: 14px;
+      }
+
+      h1 {
+        font-size: 1.45rem;
+      }
+
+      .btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Setup Your Telegram Access</h1>
+    <p class="desc">
+      To use this app, you need your own Telegram API ID and API Hash. Your data stays in your Telegram account.
+    </p>
+    <p class="desc">With the current setup, your session will expire after approximately 7 days.<br>
+      When this happens, you’ll need to re-enter your API ID and API Hash to continue using the service.<br>
+      You don’t need to create new ones — you can use the same API ID and API Hash.</p>
+
+    <h2 class="section-title">Instructions</h2>
+    <ol class="steps">
+      <li>Step 1: Click the button below to open Telegram developer site</li>
+      <li>Step 2: Login with your phone number</li>
+      <li>Step 3: Go to "API development tools"</li>
+      <li>Step 4: Create a new app</li>
+      <li>Step 5: Copy your API ID and API Hash</li>
+    </ol>
+
+    <div class="actions">
+      <button id="createCredsBtn" class="btn btn-primary" type="button">Create API Credentials</button>
+    </div>
+
+    <form id="setupForm" class="form" novalidate>
+      <label for="apiId">API ID</label>
+      <input id="apiId" type="number" inputmode="numeric" placeholder="Enter API ID (numbers only)" required />
+
+      <label for="apiHash">API Hash</label>
+      <input id="apiHash" type="text" placeholder="Enter API Hash" required />
+
+      <button id="verifyBtn" class="btn btn-primary" type="submit">Verify &amp; Continue</button>
+    </form>
+
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+
+    <section class="notes">
+      <strong>Security Notes</strong>
+      <ul>
+        <li>Your API credentials are securely handled</li>
+        <li>We do not store your files. Data stays in your Telegram account</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    const createCredsBtn = document.getElementById("createCredsBtn");
+    const setupForm = document.getElementById("setupForm");
+    const apiIdInput = document.getElementById("apiId");
+    const apiHashInput = document.getElementById("apiHash");
+    const verifyBtn = document.getElementById("verifyBtn");
+    const statusEl = document.getElementById("status");
+
+    function getCsrfToken() {
+      const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+      return m ? decodeURIComponent(m[1]) : "";
+    }
+
+    function showStatus(message, type) {
+      statusEl.textContent = message;
+      statusEl.className = "status show " + type;
+    }
+
+    function setLoading(isLoading) {
+      verifyBtn.disabled = isLoading;
+      verifyBtn.style.opacity = isLoading ? "0.7" : "1";
+      verifyBtn.textContent = isLoading ? "Verifying..." : "Verify & Continue";
+    }
+
+    createCredsBtn.addEventListener("click", function () {
+      window.open("https://my.telegram.org/", "_blank", "noopener,noreferrer");
+    });
+
+    setupForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+
+      const apiIdValue = apiIdInput.value.trim();
+      const apiHashValue = apiHashInput.value.trim();
+
+      if (!apiIdValue || !/^\d+$/.test(apiIdValue)) {
+        showStatus("Please enter a valid numeric API ID.", "error");
+        return;
+      }
+
+      if (!apiHashValue) {
+        showStatus("Please enter your API Hash.", "error");
+        return;
+      }
+
+      setLoading(true);
+      showStatus("Verifying your API credentials...", "loading");
+
+      try {
+        const response = await fetch("/setup-api", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": getCsrfToken()
+          },
+          body: JSON.stringify({
+            api_id: Number(apiIdValue),
+            api_hash: apiHashValue
+          })
+        });
+
+        let data = {};
+        try {
+          data = await response.json();
+        } catch (_) {
+          data = {};
+        }
+
+        if (response.ok && (data.status === "success" || data.valid === true)) {
+          showStatus("Setup successful. Redirecting to login...", "success");
+          setTimeout(function () {
+            window.location.href = "/login";
+          }, 900);
+          return;
+        }
+
+        showStatus(data.message || "Invalid API credentials. Please check and try again.", "error");
+      } catch (_) {
+        showStatus("Unable to reach setup service. Please try again.", "error");
+      } finally {
+        setLoading(false);
+      }
+    });
+  </script>
+</body>
+</html>

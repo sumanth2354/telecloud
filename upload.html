@@ -1,305 +1,552 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-  <title>Dashboard | Secure Cloud</title>
+  <title>TeleCloud | Dashboard</title>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
-
 <body>
+
   <div class="header">
-    <div class="logo">
-      <span class="material-symbols-rounded" style="vertical-align:bottom; margin-right:5px;">rocket_launch</span>
-      TeleCloud
-    </div>
-    <div style="display:flex; align-items:center; gap:15px;">
-      <span id="userPhone" style="font-size:0.9rem; opacity:0.7;"></span>
-      <button class="btn btn-danger"
-        style="padding: 8px 16px; font-size:0.9rem; display:flex; align-items:center; gap:5px;" onclick="logout()">
+    <div class="logo"><span class="material-symbols-rounded" style="vertical-align:bottom;margin-right:5px;">rocket_launch</span> TeleCloud</div>
+    <div style="display:flex;align-items:center;gap:15px;">
+      <span id="userPhone" style="font-size:0.9rem;opacity:0.7;"></span>
+      <button class="btn btn-danger btn-sm" style="display:flex;align-items:center;gap:5px;" onclick="logout()">
         <span class="material-symbols-rounded" style="font-size:1.2em;">logout</span> Logout
       </button>
     </div>
   </div>
 
-  <div class="max-w-xl" style="padding: 40px 20px; flex:1;">
+  <div class="max-w-xl" style="padding:40px 20px;flex:1;">
+
+    <!-- Storage Stats -->
+    <div class="stats-bar" id="statsBar" style="display:none;">
+      <span class="material-symbols-rounded">cloud</span>
+      <span id="statsText"></span>
+    </div>
+
+    <!-- Search -->
+    <div class="search-bar">
+      <input type="text" id="searchInput" placeholder="Search files by name..." onkeydown="if(event.key==='Enter')searchFiles()">
+      <button class="btn btn-primary" onclick="searchFiles()">
+        <span class="material-symbols-rounded" style="font-size:1.2em;vertical-align:middle;">search</span> Search
+      </button>
+    </div>
 
     <!-- Top Actions -->
-    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom: 30px;">
+    <div id="topActions" style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:30px;flex-wrap:wrap;gap:12px;">
       <div>
         <h2 style="margin-bottom:5px;">Your Folders</h2>
-        <p style="opacity:0.6;">Select a folder to view or upload files</p>
+        <p style="opacity:0.6;margin:0;">Select a folder to view or upload files</p>
       </div>
-      <button class="btn btn-primary" onclick="createFolder()">+ New Folder</button>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <button class="btn btn-primary" onclick="selectAllFiles()">All Files</button>
+        <button class="btn btn-primary" onclick="openModal('New Folder','Folder name...','Create',async n=>{const r=await apiPost('/create_folder',{folder_name:n});const d=await r.json();if(d.status==='success'){loadFolders();loadFolderCounts();}else showToast(d.message)})">+ New Folder</button>
     </div>
-
-    <div class="grid" id="folderGrid">
-      <!-- Folders injected here -->
     </div>
+    <div class="grid" id="folderGrid"></div>
 
     <!-- Upload Area -->
-    <div class="glass-container fade-in" id="uploadSection" style="margin-top:40px; display:none;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-        <h3 style="margin:0; display:flex; align-items:center; gap:10px;">
+    <div class="glass-container fade-in" id="uploadSection" style="margin-top:40px;display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+        <h3 style="margin:0;display:flex;align-items:center;gap:10px;">
           <span class="material-symbols-rounded">folder_open</span>
           <span id="currentFolderName">Select Folder</span>
         </h3>
-        <span class="status-msg" id="uploadStatus" style="display:none; margin:0; padding: 5px 10px;"></span>
+        <span class="status-msg" id="uploadStatus" style="display:none;margin:0;padding:5px 10px;"></span>
       </div>
-
-      <form id="uploadForm" style="display:flex; gap:15px; align-items:center;">
-        <input type="file" name="file" id="fileInput" multiple required style="flex:1;">
-        <input type="hidden" name="phone" id="phoneInput">
+      <form id="uploadForm">
         <input type="hidden" name="folderName" id="folderNameInput">
-        <button type="submit" class="btn btn-primary" id="uploadBtn">Upload Files</button>
+        <div class="drop-zone" id="dropZone">
+          <span class="material-symbols-rounded" style="font-size:3rem;opacity:0.4;">cloud_upload</span>
+          <p>Drag files here or <span class="drop-zone-browse" id="browseBtn">browse</span></p>
+          <div class="file-list" id="fileListDisplay"></div>
+          <input type="file" name="file" id="fileInput" multiple required style="display:none;">
+        </div>
+        <div class="progress-wrapper" id="progressWrapper">
+          <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+          <div class="progress-text" id="progressText">0%</div>
+        </div>
+        <button type="submit" class="btn btn-primary" id="uploadBtn" style="width:100%;margin-top:16px;">Upload Files</button>
       </form>
     </div>
 
-    <!-- Files Area -->
-    <div id="fileSection" style="margin-top: 40px; display: none;">
-      <h3 style="border-bottom: 1px solid var(--glass-border); padding-bottom: 15px; margin-bottom: 20px;">Files</h3>
+    <!-- Folder Files -->
+    <div id="fileSection" style="margin-top:40px;display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+        <h3 style="border-bottom:1px solid var(--glass-border);padding-bottom:15px;margin:0;flex:1;">Files</h3>
+        <select id="folderSortSelect" onchange="renderFolderFiles()"><option value="date-desc">Newest</option><option value="date-asc">Oldest</option><option value="name-asc">Name A-Z</option><option value="name-desc">Name Z-A</option><option value="size-desc">Largest</option><option value="size-asc">Smallest</option></select>
+      </div>
+      <div class="toolbar" id="folderToolbar" style="display:none;">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span style="opacity:0.7;font-size:0.9rem;">Selected: <strong id="folderSelectedCount">0</strong></span>
+          <button class="btn btn-sm" onclick="selectAllFolderFiles()">Select All</button>
+          <button class="btn btn-sm" onclick="clearFolderSelection()">Clear</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <select id="folderMoveSelect"><option value="">Move to...</option></select>
+          <button class="btn btn-primary btn-sm" onclick="moveFolderSelected()">Move</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteFolderSelected()">Delete</button>
+        </div>
+      </div>
       <div class="grid" id="fileGrid"></div>
-      <div id="noFilesMsg" class="text-center" style="padding: 40px; opacity: 0.5;">No files found in this folder.</div>
+      <div id="noFilesMsg" class="text-center" style="padding:40px;opacity:0.5;">No files found in this folder.</div>
     </div>
 
+    <!-- All Files -->
+    <div id="allFilesSection" style="margin-top:40px;display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;gap:16px;flex-wrap:wrap;">
+        <h3 style="border-bottom:1px solid var(--glass-border);padding-bottom:15px;margin:0;flex:1;min-width:150px;">
+          All Files <span id="allFilesTotalCount" style="font-size:0.85rem;opacity:0.5;font-weight:400;"></span>
+        </h3>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <select id="allFilesFolderSelect" style="min-width:140px;"><option value="">Move to...</option></select>
+          <button class="btn btn-sm" onclick="openModal('New Folder','Folder name...','Create',async n=>{const r=await apiPost('/create_folder',{folder_name:n});const d=await r.json();if(d.status==='success'){await loadFoldersForAllFiles();document.getElementById('allFilesFolderSelect').value=d.folder||n}else showToast(d.message)})">+ Folder</button>
+          <button class="btn btn-primary btn-sm" onclick="moveSelectedAllFiles()">Move</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteSelectedAllFiles()">Delete</button>
+          <select id="allFilesCategoryFilter" onchange="onCategoryFilterChange()">
+            <option value="All">All</option><option value="APK">APK</option><option value="Images">Images</option>
+            <option value="Videos">Videos</option><option value="Audio">Audio</option><option value="Documents">Documents</option>
+            <option value="Archives">Archives</option><option value="Other">Other</option>
+          </select>
+          <select id="allFilesSortSelect" onchange="renderAllFiles()">
+            <option value="date-desc">Newest</option><option value="date-asc">Oldest</option>
+            <option value="name-asc">Name A-Z</option><option value="name-desc">Name Z-A</option>
+            <option value="size-desc">Largest</option><option value="size-asc">Smallest</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="refreshAllFiles()">Refresh</button>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+        <span style="opacity:0.7;font-size:0.95rem;">Selected: <span id="allFilesSelectedCount">0</span></span>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-sm" onclick="selectAllVisibleAllFiles()">Select All</button>
+          <button class="btn btn-sm" onclick="clearAllFilesSelection()">Clear</button>
+        </div>
+      </div>
+      <div id="allFilesGrouped"></div>
+      <div id="loadMoreWrapper" class="text-center" style="margin-top:20px;display:none;">
+        <button class="btn btn-primary" onclick="loadAllFilesPage()">Load More</button>
+      </div>
+      <div id="noAllFilesMsg" class="text-center" style="padding:40px;opacity:0.5;display:none;">No files found.</div>
+    </div>
+
+    <!-- Search Results -->
+    <div id="searchSection" style="margin-top:40px;display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h3 style="margin:0;">Search Results <span id="searchResultCount" style="font-size:0.85rem;opacity:0.5;font-weight:400;"></span></h3>
+        <button class="btn btn-sm" onclick="clearSearch()">Clear Search</button>
+      </div>
+      <div class="grid" id="searchGrid"></div>
+      <div id="noSearchMsg" class="text-center" style="padding:40px;opacity:0.5;display:none;">No files match your search.</div>
+    </div>
   </div>
 
-  <!-- Gallery Modal -->
-  <div id="galleryModal"
-    style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:1000; align-items:center; justify-content:center; flex-direction:column;">
-    <button onclick="closeGallery()"
-      style="position:absolute; top:20px; right:30px; background:none; border:none; color:white; font-size:40px; cursor:pointer;">&times;</button>
-
-    <div style="position:relative; width:90%; height:80%; display:flex; align-items:center; justify-content:center;">
-      <button onclick="prevImage()"
-        style="position:absolute; left:0; background:rgba(255,255,255,0.1); border:none; color:white; padding:20px; font-size:24px; cursor:pointer; border-radius:50%; display:flex; align-items:center; justify-content:center;">
-        <span class="material-symbols-rounded">chevron_left</span>
-      </button>
-      <img id="galleryImage"
-        style="max-width:100%; max-height:100%; border-radius:8px; box-shadow:0 0 50px rgba(0,0,0,0.5);">
-      <button onclick="nextImage()"
-        style="position:absolute; right:0; background:rgba(255,255,255,0.1); border:none; color:white; padding:20px; font-size:24px; cursor:pointer; border-radius:50%; display:flex; align-items:center; justify-content:center;">
-        <span class="material-symbols-rounded">chevron_right</span>
-      </button>
+  <!-- Modal -->
+  <div id="modalOverlay" class="modal-overlay" style="display:none;">
+    <div class="glass-container max-w-md fade-in">
+      <h3 id="modalTitle" style="margin-bottom:16px;"></h3>
+      <input type="text" id="modalInput" placeholder="">
+      <div style="display:flex;gap:12px;margin-top:20px;">
+        <button class="btn btn-primary" id="modalConfirmBtn" style="flex:1;">Create</button>
+        <button class="btn" style="flex:1;" onclick="hideModal()">Cancel</button>
+      </div>
     </div>
-    <div id="galleryCounter" style="margin-top:20px; color:white; font-size:1.1rem;"></div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" style="display:none;"></div>
+
+  <!-- Preview Modal (video/audio/pdf) -->
+  <div id="previewModal" class="preview-overlay" style="display:none;">
+    <div class="preview-box">
+      <button class="preview-close" onclick="closePreview()">&times;</button>
+      <div class="preview-name" id="previewName"></div>
+      <div id="previewContent"></div>
+    </div>
+  </div>
+
+  <!-- Gallery -->
+  <div id="galleryModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:1000;align-items:center;justify-content:center;flex-direction:column;">
+    <button onclick="closeGallery()" style="position:absolute;top:20px;right:30px;background:none;border:none;color:white;font-size:40px;cursor:pointer;z-index:10;">&times;</button>
+    <div style="position:relative;width:90%;height:80%;display:flex;align-items:center;justify-content:center;">
+      <button onclick="galleryPrev()" style="position:absolute;left:0;background:rgba(255,255,255,0.1);border:none;color:white;padding:20px;cursor:pointer;border-radius:50%;z-index:5;"><span class="material-symbols-rounded">chevron_left</span></button>
+      <div id="gallerySpinner" class="gallery-spinner"></div>
+      <img id="galleryImage" style="max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 0 50px rgba(0,0,0,0.5);">
+      <button onclick="galleryNext()" style="position:absolute;right:0;background:rgba(255,255,255,0.1);border:none;color:white;padding:20px;cursor:pointer;border-radius:50%;z-index:5;"><span class="material-symbols-rounded">chevron_right</span></button>
+    </div>
+    <div id="galleryCounter" style="margin-top:20px;color:white;font-size:1.1rem;"></div>
   </div>
 
   <script>
-    let selectedFolder = null;
-    let folders = [];
-    let phone = localStorage.getItem("telegram_phone");
-    let currentFiles = [];
-    let currentImageIndex = 0;
+/* ── Helpers ──────────────────────────────────────────────────── */
+function getCsrfToken(){const m=document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);return m?decodeURIComponent(m[1]):'';}
+async function authFetch(u,o={}){if(!o.headers)o.headers={};o.headers['X-CSRF-Token']=getCsrfToken();const r=await fetch(u,o);if(r.status===401){window.location.href='/login';throw Error('Unauthorized');}if(r.status===403){window.location.reload();throw Error('CSRF');}return r;}
+async function apiPost(u,d){return authFetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});}
 
-    if (!phone) window.location.href = '/login';
-    document.getElementById("userPhone").innerText = phone;
-    document.getElementById("phoneInput").value = phone;
+let _toastTimer;
+function showToast(m,t='error'){const e=document.getElementById("toast");e.innerText=m;e.className=`toast toast-${t}`;e.style.display="block";clearTimeout(_toastTimer);_toastTimer=setTimeout(()=>e.style.display="none",4000);}
 
-    window.onload = loadFolders;
+function openModal(title,ph,btn,onConfirm){
+  document.getElementById("modalTitle").innerText=title;const inp=document.getElementById("modalInput");inp.placeholder=ph;inp.value="";
+  document.getElementById("modalConfirmBtn").innerText=btn||"Create";document.getElementById("modalOverlay").style.display="flex";
+  setTimeout(()=>inp.focus(),100);
+  const go=()=>{const v=inp.value.trim();if(!v)return;onConfirm(v);hideModal();};
+  document.getElementById("modalConfirmBtn").onclick=go;inp.onkeydown=e=>{if(e.key==='Enter')go();};
+}
+function hideModal(){document.getElementById("modalOverlay").style.display="none";}
 
-    async function loadFolders() {
-      const res = await fetch("/list_folders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone })
-      });
-      const data = await res.json();
-      const grid = document.getElementById("folderGrid");
-      grid.innerHTML = '';
+function formatFileSize(b){if(!b)return'0 B';const k=1024,s=['B','KB','MB','GB'];const i=Math.floor(Math.log(b)/Math.log(k));return parseFloat((b/Math.pow(k,i)).toFixed(2))+' '+s[i];}
 
-      if (data.status === "success") {
-        folders = data.folders;
-        if (folders.length === 0) {
-          grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:40px; opacity:0.6;">No folders yet. Create one to start!</div>';
+function formatDate(d){if(!d)return'';const dt=new Date(d),now=new Date(),diff=now-dt;
+  if(diff<86400000)return'Today';if(diff<172800000)return'Yesterday';
+  if(diff<604800000)return Math.floor(diff/86400000)+'d ago';
+  return dt.toLocaleDateString('en',{month:'short',day:'numeric'});}
+
+function sortFiles(files,key){const s=[...files];switch(key){
+  case'date-desc':s.sort((a,b)=>(b.date||'').localeCompare(a.date||''));break;
+  case'date-asc':s.sort((a,b)=>(a.date||'').localeCompare(b.date||''));break;
+  case'name-asc':s.sort((a,b)=>(a.name||'').localeCompare(b.name||''));break;
+  case'name-desc':s.sort((a,b)=>(b.name||'').localeCompare(a.name||''));break;
+  case'size-desc':s.sort((a,b)=>(b.size||0)-(a.size||0));break;
+  case'size-asc':s.sort((a,b)=>(a.size||0)-(b.size||0));break;
+}return s;}
+
+function saveView(){sessionStorage.setItem('tc',JSON.stringify({v:currentView,f:selectedFolder,c:document.getElementById("allFilesCategoryFilter")?.value||'All'}));}
+
+/* ── State ────────────────────────────────────────────────────── */
+let selectedFolder=null,folders=[],currentView="folder",phone='',currentFiles=[];
+let galleryImages=[],galleryIndex=0;
+let allFilesSelectedIds=new Set(),folderSelectedIds=new Set();
+let allFilesOffset=0,allFilesTotal=0,isUploading=false;
+const PAGE=50;
+
+/* ── Upload close protection ──────────────────────────────────── */
+window.addEventListener('beforeunload',e=>{if(isUploading){e.preventDefault();e.returnValue='';}});
+
+/* ── Init ─────────────────────────────────────────────────────── */
+async function init(){
+  try{const r=await authFetch("/me");const d=await r.json();phone=d.phone||'';document.getElementById("userPhone").innerText=phone;}catch(e){return;}
+  await loadFolders();
+  loadFolderCounts();
+  const sv=JSON.parse(sessionStorage.getItem('tc')||'null');
+  if(sv){
+    if(sv.v==='all'){selectAllFiles();if(sv.c)document.getElementById("allFilesCategoryFilter").value=sv.c;return;}
+    if(sv.v==='folder'&&sv.f){const cards=document.querySelectorAll('#folderGrid .card');for(const c of cards){if(c.querySelector('.card-title')?.innerText===sv.f){selectFolder(sv.f,c);return;}}}
+  }
+}
+window.onload=init;
+
+/* ── Storage stats + folder counts ────────────────────────────── */
+async function loadFolderCounts(){
+  try{
+    const r=await apiPost("/folder_counts",{});const d=await r.json();
+    if(d.status==='success'){
+      // Update folder cards with file counts
+      document.querySelectorAll('#folderGrid .card').forEach(card=>{
+        const title=card.querySelector('.card-title')?.innerText;
+        if(title&&d.counts&&d.counts[title]!==undefined){
+          let meta=card.querySelector('.card-meta');
+          if(!meta){meta=document.createElement('div');meta.className='card-meta';card.appendChild(meta);}
+          const n=d.counts[title];
+          meta.innerText=`${n} file${n!==1?'s':''}`;
         }
-        folders.forEach(folder => {
-          const card = document.createElement("div");
-          card.className = "card";
-          card.innerHTML = `
-                <div class="card-icon"><span class="material-symbols-rounded" style="font-size:3rem;">folder</span></div>
-                <div class="card-title">${folder}</div>
-            `;
-          card.onclick = () => selectFolder(folder, card);
-          grid.appendChild(card);
-        });
+      });
+      // Storage stats
+      if(d.total_files!==undefined){
+        document.getElementById("statsText").innerText=`${d.total_files} files in Saved Messages \u00B7 ${formatFileSize(d.total_size)} total`;
+        document.getElementById("statsBar").style.display="flex";
       }
     }
+  }catch(_){}
+}
 
-    async function createFolder() {
-      const folder = prompt("New Folder Name:");
-      if (!folder) return;
+/* ── Gallery ──────────────────────────────────────────────────── */
+const galleryImg=document.getElementById("galleryImage");
+galleryImg.onload=()=>document.getElementById("gallerySpinner").style.display="none";
+function openGallery(images,index){galleryImages=images;galleryIndex=index;document.getElementById("galleryModal").style.display="flex";updateGallery();}
+function updateGallery(){document.getElementById("gallerySpinner").style.display="block";const f=galleryImages[galleryIndex];galleryImg.src=`/get_file/${f.id}`;document.getElementById("galleryCounter").innerText=`${galleryIndex+1} / ${galleryImages.length}`;}
+function closeGallery(){document.getElementById("galleryModal").style.display="none";}
+function galleryPrev(){galleryIndex=(galleryIndex-1+galleryImages.length)%galleryImages.length;updateGallery();}
+function galleryNext(){galleryIndex=(galleryIndex+1)%galleryImages.length;updateGallery();}
 
-      const res = await fetch("/create_folder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, folder_name: folder })
-      });
+/* ── Preview (video/audio/pdf) ────────────────────────────────── */
+function openPreview(fileId,mime,name){
+  const content=document.getElementById("previewContent");
+  document.getElementById("previewName").innerHTML=`<span class="material-symbols-rounded" style="font-size:1.2rem;">${mime.includes('video')?'movie':mime.includes('audio')?'music_note':'picture_as_pdf'}</span> ${name}`;
+  if(mime.startsWith("video/")){
+    content.innerHTML=`<video src="/get_file/${fileId}" controls autoplay style="width:100%;max-height:80vh;"></video>`;
+  }else if(mime.startsWith("audio/")){
+    content.innerHTML=`<div style="padding:40px;text-align:center;"><audio src="/get_file/${fileId}" controls autoplay style="width:100%;"></audio></div>`;
+  }else if(mime.includes("pdf")){
+    content.innerHTML=`<iframe src="/get_file/${fileId}" style="width:100%;height:80vh;"></iframe>`;
+  }
+  document.getElementById("previewModal").style.display="flex";
+}
+function closePreview(){document.getElementById("previewModal").style.display="none";document.getElementById("previewContent").innerHTML='';}
 
-      const data = await res.json();
-      if (data.status === "success") {
-        loadFolders();
-      } else {
-        alert(data.message);
-      }
-    }
+/* ── Drop zone ────────────────────────────────────────────────── */
+const dropZone=document.getElementById("dropZone"),fileInput=document.getElementById("fileInput"),fileListDisplay=document.getElementById("fileListDisplay");
+document.getElementById("browseBtn").onclick=e=>{e.stopPropagation();fileInput.click();};
+dropZone.onclick=()=>fileInput.click();
+fileInput.addEventListener("change",()=>updateFileList());
+dropZone.addEventListener("dragover",e=>{e.preventDefault();dropZone.classList.add("drag-over");});
+dropZone.addEventListener("dragleave",()=>dropZone.classList.remove("drag-over"));
+dropZone.addEventListener("drop",e=>{e.preventDefault();dropZone.classList.remove("drag-over");if(e.dataTransfer.files.length){fileInput.files=e.dataTransfer.files;updateFileList();}});
+function updateFileList(){const f=fileInput.files;if(!f||!f.length){fileListDisplay.innerHTML='';return;}fileListDisplay.innerHTML=Array.from(f).map(x=>`${x.name} (${formatFileSize(x.size)})`).join('<br>');}
 
-    function selectFolder(folder, cardElem) {
-      selectedFolder = folder;
-      document.querySelectorAll(".card").forEach(c => c.classList.remove("selected"));
-      cardElem.classList.add("selected");
+/* ── Skeleton ─────────────────────────────────────────────────── */
+function showSkeleton(c,n){c.innerHTML='';for(let i=0;i<n;i++){const d=document.createElement('div');d.className='card skeleton';d.innerHTML=`<div style="width:100%;height:120px;background:rgba(255,255,255,0.05);border-radius:8px;margin-bottom:10px;"></div><div style="width:70%;height:14px;background:rgba(255,255,255,0.05);border-radius:4px;margin-bottom:8px;"></div><div style="width:40%;height:12px;background:rgba(255,255,255,0.05);border-radius:4px;"></div>`;c.appendChild(d);}}
 
-      document.getElementById("uploadSection").style.display = "block";
-      document.getElementById("uploadSection").classList.add("fade-in");
-      document.getElementById("currentFolderName").innerText = folder;
-      document.getElementById("folderNameInput").value = folder;
+/* ── File card builder ────────────────────────────────────────── */
+function buildFileCard(file, {images, imgMap, selectable, selectedSet, onToggle}){
+  const card=document.createElement("div");card.className="card";
+  const isImage=file.mime_type&&file.mime_type.startsWith("image/");
+  const isVideo=file.mime_type&&file.mime_type.startsWith("video/");
+  const isAudio=file.mime_type&&file.mime_type.startsWith("audio/");
+  const isPdf=file.mime_type&&file.mime_type.includes("pdf");
+  const checked=selectedSet&&selectedSet.has(file.id)?"checked":"";
 
-      loadFilesInFolder(folder);
-    }
+  let preview;
+  if(isImage){preview=`<img src="/get_thumbnail/${file.id}" loading="lazy" style="width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:10px;">`;}
+  else{preview=`<div class="card-icon">${getFileIcon(file.mime_type)}</div>`;}
 
-    async function loadFilesInFolder(folder) {
-      document.getElementById("fileSection").style.display = "block";
-      const grid = document.getElementById("fileGrid");
-      grid.innerHTML = '<div class="text-center" style="width:100%">Loading files...</div>';
+  const selectHtml=selectable?`<div style="position:absolute;top:8px;right:8px;z-index:5;">
+    <label style="display:flex;align-items:center;gap:5px;background:rgba(0,0,0,0.45);border:1px solid var(--glass-border);padding:4px 8px;border-radius:999px;cursor:pointer;">
+      <input type="checkbox" data-id="${file.id}" ${checked} style="width:auto;margin:0;accent-color:var(--accent-color);">
+      <span style="font-size:0.8rem;opacity:0.9;">Select</span>
+    </label></div>`:'';
 
-      const res = await fetch("/list_files_in_folder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, folder })
-      });
-      const data = await res.json();
-      grid.innerHTML = '';
+  card.innerHTML=`${selectHtml}${preview}
+    <div class="card-title" style="font-size:0.85rem;">${file.name}</div>
+    <div class="card-meta">${formatFileSize(file.size)} \u00B7 ${formatDate(file.date)}</div>
+    <a href="/get_file/${file.id}" download class="card-download" title="Download"><span class="material-symbols-rounded" style="font-size:1.1rem;">download</span></a>`;
 
-      if (data.status === "success") {
-        currentFiles = data.files;
-        if (currentFiles.length === 0) {
-          document.getElementById("noFilesMsg").style.display = "block";
-        } else {
-          document.getElementById("noFilesMsg").style.display = "none";
-          currentFiles.forEach((file, idx) => {
-            const isImage = file.mime_type && file.mime_type.startsWith('image/');
-            const card = document.createElement("div");
-            card.className = "card";
+  if(selectable){
+    const cb=card.querySelector(`input[data-id="${file.id}"]`);
+    if(cb){cb.addEventListener("click",e=>e.stopPropagation());cb.addEventListener("change",e=>{e.stopPropagation();onToggle(file.id);cb.checked=selectedSet.has(file.id);});}
+  }
 
-            let icon = '<span class="material-symbols-rounded" style="font-size:3rem;">description</span>';
-            if (file.mime_type.includes('pdf')) icon = '<span class="material-symbols-rounded" style="font-size:3rem;">picture_as_pdf</span>';
-            if (file.mime_type.includes('video')) icon = '<span class="material-symbols-rounded" style="font-size:3rem;">movie</span>';
-            if (file.mime_type.includes('audio')) icon = '<span class="material-symbols-rounded" style="font-size:3rem;">music_note</span>';
+  if(isImage){card.onclick=()=>{const idx=imgMap?.get(file.id);if(typeof idx==='number')openGallery(images,idx);};}
+  else if(isVideo||isAudio||isPdf){card.onclick=()=>openPreview(file.id,file.mime_type,file.name);}
+  else{card.onclick=()=>window.open(`/get_file/${file.id}`);}
+  card.querySelector('.card-download')?.addEventListener('click',e=>e.stopPropagation());
+  return card;
+}
 
-            let previewHtml = `<div class="card-icon">${icon}</div>`;
+function getFileIcon(m){const s='style="font-size:3rem;"';if(!m)return`<span class="material-symbols-rounded" ${s}>description</span>`;if(m.includes('pdf'))return`<span class="material-symbols-rounded" ${s}>picture_as_pdf</span>`;if(m.includes('video'))return`<span class="material-symbols-rounded" ${s}>movie</span>`;if(m.includes('audio'))return`<span class="material-symbols-rounded" ${s}>music_note</span>`;return`<span class="material-symbols-rounded" ${s}>description</span>`;}
+function getCategoryIcon(c,f){const s='style="font-size:3rem;"';if(c==="APK")return`<span class="material-symbols-rounded" ${s}>android</span>`;if(c==="Videos")return`<span class="material-symbols-rounded" ${s}>movie</span>`;if(c==="Audio")return`<span class="material-symbols-rounded" ${s}>music_note</span>`;if(c==="Documents")return f.mime_type&&f.mime_type.includes("pdf")?`<span class="material-symbols-rounded" ${s}>picture_as_pdf</span>`:`<span class="material-symbols-rounded" ${s}>description</span>`;if(c==="Archives")return`<span class="material-symbols-rounded" ${s}>archive</span>`;return`<span class="material-symbols-rounded" ${s}>attach_file</span>`;}
 
-            if (isImage) {
-              previewHtml = `<img src="/get_file/${phone}/${file.id}" style="width:100%; height:120px; object-fit:cover; border-radius:8px; margin-bottom:10px;" onclick="openGallery(${idx})">`;
-            }
-
-            card.innerHTML = `
-                ${previewHtml}
-                <div class="card-title" style="font-size:0.9rem;">${file.name}</div>
-                <div class="card-meta">${formatFileSize(file.size)}</div>
-            `;
-            if (!isImage) {
-              // Make non-images downloadable or just visually distinct? 
-              // For now, allow click to download if we added that route, but simple view assumes preview.
-              card.onclick = () => window.open(`/get_file/${phone}/${file.id}`);
-            }
+/* ── Folders ──────────────────────────────────────────────────── */
+async function loadFolders(){
+  const r=await apiPost("/list_folders",{});const d=await r.json();
+  const grid=document.getElementById("folderGrid");grid.innerHTML='';
+  if(d.status==="success"){
+    folders=d.folders;
+    if(!folders.length){grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;opacity:0.5;"><span class="material-symbols-rounded" style="font-size:4rem;display:block;margin-bottom:12px;opacity:0.3;">create_new_folder</span>No folders yet. Create one!</div>';return;}
+    folders.forEach(f=>{
+      const card=document.createElement("div");card.className="card";
+      card.innerHTML=`<div class="card-actions">
+          <button class="card-action-btn" title="Rename"><span class="material-symbols-rounded" style="font-size:1rem;">edit</span></button>
+          <button class="card-action-btn" title="Delete"><span class="material-symbols-rounded" style="font-size:1rem;">delete</span></button>
+        </div>
+        <div class="card-icon"><span class="material-symbols-rounded" style="font-size:3rem;">folder</span></div>
+        <div class="card-title">${f}</div>`;
+      card.onclick=()=>selectFolder(f,card);
+      const btns=card.querySelectorAll('.card-action-btn');
+      btns[0].onclick=e=>{e.stopPropagation();openModal('Rename Folder','New name...','Rename',async n=>{const r2=await apiPost('/rename_folder',{old_name:f,new_name:n});const d2=await r2.json();if(d2.status==='success'){showToast(`Renamed (${d2.renamed_files} files updated)`,'success');loadFolders();loadFolderCounts();}else showToast(d2.message);});};
+      btns[1].onclick=e=>{e.stopPropagation();if(!confirm(`Remove folder "${f}"? Files stay in Telegram.`))return;apiPost('/delete_folder',{folder_name:f}).then(r2=>r2.json()).then(d2=>{if(d2.status==='success'){showToast('Folder removed','success');loadFolders();loadFolderCounts();}else showToast(d2.message);});};
             grid.appendChild(card);
           });
         }
       }
-    }
 
-    document.getElementById("uploadForm").addEventListener("submit", async function (e) {
-      e.preventDefault();
-      const btn = document.getElementById("uploadBtn");
-      const status = document.getElementById("uploadStatus");
+function selectFolder(f,card){
+  selectedFolder=f;currentView="folder";saveView();
+  document.getElementById("allFilesSection").style.display="none";
+  document.getElementById("searchSection").style.display="none";
+  document.querySelectorAll("#folderGrid .card").forEach(c=>c.classList.remove("selected"));
+  card.classList.add("selected");
+  document.getElementById("uploadSection").style.display="block";
+  document.getElementById("currentFolderName").innerText=f;
+  document.getElementById("folderNameInput").value=f;
+  fileInput.value="";fileListDisplay.innerHTML="";
+  loadFilesInFolder(f);
+}
 
-      btn.disabled = true;
-      btn.innerText = "Uploading...";
-      status.style.display = "none";
+/* ── Folder files ─────────────────────────────────────────────── */
+let folderFilesRaw=[];
+async function loadFilesInFolder(folder){
+  document.getElementById("allFilesSection").style.display="none";
+  document.getElementById("searchSection").style.display="none";
+  document.getElementById("fileSection").style.display="block";
+  const grid=document.getElementById("fileGrid");showSkeleton(grid,6);
+  folderSelectedIds=new Set();updateFolderSelectedCount();
+  document.getElementById("folderToolbar").style.display="none";
+  const r=await apiPost("/list_files_in_folder",{folder});const d=await r.json();
+  if(d.status==="success"){currentFiles=d.files;folderFilesRaw=d.files;loadFolderMoveSelect();renderFolderFiles();}
+}
 
-      try {
-        const formData = new FormData(this);
-        const res = await fetch("/upload", { method: "POST", body: formData });
-        const data = await res.json();
+function renderFolderFiles(){
+  const grid=document.getElementById("fileGrid");grid.innerHTML='';
+  const files=sortFiles(folderFilesRaw,document.getElementById("folderSortSelect").value);
+  currentFiles=files;
+  if(!files.length){document.getElementById("noFilesMsg").style.display="block";document.getElementById("folderToolbar").style.display="none";return;}
+  document.getElementById("noFilesMsg").style.display="none";
+  document.getElementById("folderToolbar").style.display="flex";
+  const images=files.filter(f=>f.mime_type&&f.mime_type.startsWith('image/'));
+  const imgMap=new Map();images.forEach((f,i)=>imgMap.set(f.id,i));
+  files.forEach(file=>grid.appendChild(buildFileCard(file,{images,imgMap,selectable:true,selectedSet:folderSelectedIds,onToggle:toggleFolderSelect})));
+}
 
-        if (data.status === "success") {
-          status.innerText = "✅ Upload Complete";
-          status.className = "status-msg status-success";
-          status.style.display = "block";
-          document.getElementById("fileInput").value = "";
-          loadFilesInFolder(selectedFolder);
-        } else {
-          status.innerText = "❌ " + data.message;
-          status.className = "status-msg status-error";
-          status.style.display = "block";
-        }
-      } catch (err) {
-        status.innerText = "❌ Network Error";
-        status.className = "status-msg status-error";
-        status.style.display = "block";
-      }
+function toggleFolderSelect(id){if(folderSelectedIds.has(id))folderSelectedIds.delete(id);else folderSelectedIds.add(id);updateFolderSelectedCount();}
+function updateFolderSelectedCount(){document.getElementById("folderSelectedCount").innerText=String(folderSelectedIds.size);}
+function selectAllFolderFiles(){folderFilesRaw.forEach(f=>folderSelectedIds.add(f.id));updateFolderSelectedCount();renderFolderFiles();}
+function clearFolderSelection(){folderSelectedIds=new Set();updateFolderSelectedCount();renderFolderFiles();}
 
-      btn.disabled = false;
-      btn.innerText = "Upload Files";
+async function loadFolderMoveSelect(){
+  const sel=document.getElementById("folderMoveSelect");sel.innerHTML='<option value="">Move to...</option>';
+  try{const r=await apiPost("/list_folders",{});const d=await r.json();if(d.status==='success')d.folders.forEach(f=>{if(f!==selectedFolder){const o=document.createElement("option");o.value=f;o.innerText=f;sel.appendChild(o);}});}catch(_){}
+}
+
+async function moveFolderSelected(){
+  const folder=document.getElementById("folderMoveSelect").value;if(!folder){showToast("Choose a destination.");return;}
+  const ids=Array.from(folderSelectedIds);if(!ids.length){showToast("Select files first.");return;}
+  const r=await apiPost("/move_files_to_folder",{folder,msg_ids:ids});const d=await r.json();
+  if(d.status==='success'){showToast(`Moved ${d.moved} file(s)`,'success');clearFolderSelection();loadFilesInFolder(selectedFolder);loadFolderCounts();}else showToast(d.message);
+}
+
+async function deleteFolderSelected(){
+  const ids=Array.from(folderSelectedIds);if(!ids.length){showToast("Select files first.");return;}
+  if(!confirm(`Delete ${ids.length} file(s) from Telegram?`))return;
+  const r=await apiPost("/delete_files",{msg_ids:ids});const d=await r.json();
+  if(d.status==='success'){showToast(`Deleted ${d.deleted} file(s)`,'success');clearFolderSelection();loadFilesInFolder(selectedFolder);loadFolderCounts();}else showToast(d.message);
+}
+
+/* ── All Files ────────────────────────────────────────────────── */
+function selectAllFiles(){
+  currentView="all";selectedFolder=null;saveView();
+  document.getElementById("uploadSection").style.display="none";
+  document.getElementById("fileSection").style.display="none";
+  document.getElementById("searchSection").style.display="none";
+  document.getElementById("allFilesSection").style.display="block";
+  document.getElementById("allFilesCategoryFilter").value="All";
+  clearAllFilesSelection();loadFoldersForAllFiles();refreshAllFiles();
+}
+async function refreshAllFiles(){allFilesOffset=0;allFilesTotal=0;window.__afc=[];document.getElementById("loadMoreWrapper").style.display="none";await loadAllFilesPage(true);}
+async function loadAllFilesPage(isRefresh){
+  const c=document.getElementById("allFilesGrouped"),lm=document.getElementById("loadMoreWrapper");
+  if(allFilesOffset===0){showSkeleton(c,8);document.getElementById("noAllFilesMsg").style.display="none";}
+  const cat=document.getElementById("allFilesCategoryFilter").value;
+  const r=await apiPost("/list_all_files",{offset:allFilesOffset,limit:PAGE,category:cat,refresh:!!isRefresh});const d=await r.json();
+  if(d.status!=="success"||!d.files.length){if(allFilesOffset===0){c.innerHTML='';document.getElementById("noAllFilesMsg").style.display="block";}lm.style.display="none";if(d.total!==undefined)document.getElementById("allFilesTotalCount").innerText=`(${d.total})`;return;}
+  allFilesTotal=d.total;window.__afc=window.__afc.concat(d.files);allFilesOffset+=d.files.length;
+  renderAllFiles();lm.style.display=d.has_more?"block":"none";document.getElementById("allFilesTotalCount").innerText=`(${d.total})`;
+}
+function onCategoryFilterChange(){allFilesOffset=0;allFilesTotal=0;window.__afc=[];allFilesSelectedIds=new Set();updateAllFilesSelectedCount();loadAllFilesPage(false);}
+async function loadFoldersForAllFiles(){const sel=document.getElementById("allFilesFolderSelect");const pv=sel.value;sel.innerHTML='<option value="">Move to...</option>';try{const r=await apiPost("/list_folders",{});const d=await r.json();if(d.status==='success')d.folders.forEach(f=>{const o=document.createElement("option");o.value=f;o.innerText=f;sel.appendChild(o);});}catch(_){}if(pv)sel.value=pv;}
+
+function updateAllFilesSelectedCount(){document.getElementById("allFilesSelectedCount").innerText=String(allFilesSelectedIds.size);}
+function toggleAllFileSelect(id){if(allFilesSelectedIds.has(id))allFilesSelectedIds.delete(id);else allFilesSelectedIds.add(id);updateAllFilesSelectedCount();}
+function clearAllFilesSelection(){allFilesSelectedIds=new Set();updateAllFilesSelectedCount();if(currentView==='all'&&window.__afc?.length)renderAllFiles();}
+function selectAllVisibleAllFiles(){(window.__afc||[]).forEach(f=>allFilesSelectedIds.add(f.id));updateAllFilesSelectedCount();renderAllFiles();}
+
+async function moveSelectedAllFiles(){
+  const folder=document.getElementById("allFilesFolderSelect").value;if(!folder){showToast("Choose a folder.");return;}
+  const ids=Array.from(allFilesSelectedIds);if(!ids.length){showToast("Select files first.");return;}
+  const r=await apiPost("/move_files_to_folder",{folder,msg_ids:ids});const d=await r.json();
+  if(d.status==='success'){showToast(`Moved ${d.moved} file(s)`,'success');await loadFoldersForAllFiles();clearAllFilesSelection();refreshAllFiles();}else showToast(d.message);
+}
+async function deleteSelectedAllFiles(){
+  const ids=Array.from(allFilesSelectedIds);if(!ids.length){showToast("Select files first.");return;}
+  if(!confirm(`Delete ${ids.length} file(s) from Telegram?`))return;
+  const r=await apiPost("/delete_files",{msg_ids:ids});const d=await r.json();
+  if(d.status==='success'){showToast(`Deleted ${d.deleted} file(s)`,'success');clearAllFilesSelection();refreshAllFiles();}else showToast(d.message);
+}
+
+function renderAllFiles(){
+  const container=document.getElementById("allFilesGrouped");container.innerHTML='';
+  document.getElementById("noAllFilesMsg").style.display="none";
+  const files=sortFiles(window.__afc||[],document.getElementById("allFilesSortSelect").value);
+  if(!files.length){document.getElementById("noAllFilesMsg").style.display="block";return;}
+
+  const images=files.filter(f=>f.mime_type&&f.mime_type.startsWith("image/"));
+  const imgMap=new Map();images.forEach((f,i)=>imgMap.set(f.id,i));
+  const cats=["APK","Images","Videos","Audio","Documents","Archives","Other"];
+  const byC={};cats.forEach(c=>byC[c]=[]);files.forEach(f=>{const c=f.category||"Other";if(!byC[c])byC[c]=[];byC[c].push(f);});
+  const filter=document.getElementById("allFilesCategoryFilter").value;
+  (filter==="All"?cats:[filter]).forEach(cat=>{
+    const list=byC[cat]||[];if(!list.length)return;
+    const block=document.createElement("div");block.style.marginBottom="26px";
+    const h=document.createElement("h4");h.style.margin="0 0 14px 0";h.style.opacity="0.85";h.innerText=`${cat} (${list.length})`;block.appendChild(h);
+    const grid=document.createElement("div");grid.className="grid";grid.style.paddingTop="0";
+    list.forEach(file=>{
+      const card=buildFileCard(file,{images,imgMap,selectable:true,selectedSet:allFilesSelectedIds,onToggle:toggleAllFileSelect});
+      // Override icon for non-image categories
+      if(!file.mime_type?.startsWith("image/")){const iconDiv=card.querySelector('.card-icon');if(iconDiv)iconDiv.innerHTML=getCategoryIcon(cat,file);}
+      grid.appendChild(card);
     });
+    block.appendChild(grid);container.appendChild(block);
+  });
+}
 
-    function formatFileSize(bytes) {
-      if (!bytes) return '0 B';
-      const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
+/* ── Search ───────────────────────────────────────────────────── */
+async function searchFiles(){
+  const q=document.getElementById("searchInput").value.trim();if(!q){clearSearch();return;}
+  if(q.length<2){showToast("Enter at least 2 characters.");return;}
+  currentView="search";saveView();
+  document.getElementById("uploadSection").style.display="none";
+  document.getElementById("fileSection").style.display="none";
+  document.getElementById("allFilesSection").style.display="none";
+  document.getElementById("searchSection").style.display="block";
+  const grid=document.getElementById("searchGrid");showSkeleton(grid,6);
+  const r=await apiPost("/search_files",{query:q});const d=await r.json();grid.innerHTML='';
+  if(d.status!=='success'||!d.files.length){document.getElementById("noSearchMsg").style.display="block";document.getElementById("searchResultCount").innerText=`(0)`;return;}
+  document.getElementById("noSearchMsg").style.display="none";
+  document.getElementById("searchResultCount").innerText=`(${d.total})`;
+  const images=d.files.filter(f=>f.mime_type&&f.mime_type.startsWith("image/"));
+  const imgMap=new Map();images.forEach((f,i)=>imgMap.set(f.id,i));
+  d.files.forEach(file=>grid.appendChild(buildFileCard(file,{images,imgMap,selectable:false})));
+}
+function clearSearch(){document.getElementById("searchInput").value="";document.getElementById("searchSection").style.display="none";currentView="folder";saveView();}
 
-    function logout() {
-      localStorage.removeItem("telegram_phone");
-      window.location.href = "/";
-    }
+/* ── Upload with progress ─────────────────────────────────────── */
+document.getElementById("uploadForm").addEventListener("submit",function(e){
+  e.preventDefault();
+  if(!fileInput.files||!fileInput.files.length){showToast("Select files first.");return;}
+  const btn=document.getElementById("uploadBtn"),status=document.getElementById("uploadStatus");
+  const pw=document.getElementById("progressWrapper"),pf=document.getElementById("progressFill"),pt=document.getElementById("progressText");
+  btn.disabled=true;btn.innerText="Uploading...";status.style.display="none";isUploading=true;
+  const formData=new FormData(this);const xhr=new XMLHttpRequest();
+  pw.style.display="block";pf.style.width="0%";pt.innerText="0%";
+  xhr.upload.onprogress=e=>{if(e.lengthComputable){const pct=Math.round(e.loaded/e.total*100);pf.style.width=pct+"%";pt.innerText=pct+"%";}};
+  xhr.onload=()=>{
+    pw.style.display="none";btn.disabled=false;btn.innerText="Upload Files";isUploading=false;
+    if(xhr.status===200){const d=JSON.parse(xhr.responseText);if(d.status==="success"){status.innerText="Upload Complete";status.className="status-msg status-success";status.style.display="block";fileInput.value="";fileListDisplay.innerHTML="";if(currentView==="folder")loadFilesInFolder(selectedFolder);else refreshAllFiles();loadFolderCounts();}
+    else{status.innerText=d.message;status.className="status-msg status-error";status.style.display="block";}}
+    else if(xhr.status===401){window.location.href='/login';}
+    else{status.innerText="Upload failed";status.className="status-msg status-error";status.style.display="block";}
+  };
+  xhr.onerror=()=>{pw.style.display="none";btn.disabled=false;btn.innerText="Upload Files";isUploading=false;status.innerText="Network Error";status.className="status-msg status-error";status.style.display="block";};
+  xhr.open("POST","/upload");xhr.setRequestHeader("X-CSRF-Token",getCsrfToken());xhr.send(formData);
+});
 
-    // Gallery
-    function openGallery(index) {
-      currentImageIndex = index;
-      document.getElementById("galleryModal").style.display = "flex";
-      updateGallery();
-    }
-    function updateGallery() {
-      const file = currentFiles[currentImageIndex];
-      document.getElementById("galleryImage").src = `/get_file/${phone}/${file.id}`;
-      document.getElementById("galleryCounter").innerText = `${currentImageIndex + 1} / ${currentFiles.length}`;
-    }
-    function closeGallery() { document.getElementById("galleryModal").style.display = "none"; }
+function logout(){apiPost("/logout",{}).catch(()=>{}).finally(()=>{window.location.href="/";});}
 
-    // Global Keyboard listener
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') {
-        closeGallery();
-      }
-      if (document.getElementById("galleryModal").style.display === "flex") {
-        if (e.key === 'ArrowLeft') prevImage();
-        if (e.key === 'ArrowRight') nextImage();
-      }
-    });
-
-    function prevImage() {
-      // Find previous image index
-      let newIndex = currentImageIndex;
-      do {
-        newIndex = (newIndex - 1 + currentFiles.length) % currentFiles.length;
-      } while (!currentFiles[newIndex].mime_type.startsWith('image/') && newIndex !== currentImageIndex);
-
-      currentImageIndex = newIndex;
-      updateGallery();
-    }
-
-    function nextImage() {
-      let newIndex = currentImageIndex;
-      do {
-        newIndex = (newIndex + 1) % currentFiles.length;
-      } while (!currentFiles[newIndex].mime_type.startsWith('image/') && newIndex !== currentImageIndex);
-
-      currentImageIndex = newIndex;
-      updateGallery();
-    }
+/* ── Keyboard ─────────────────────────────────────────────────── */
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    if(document.getElementById("previewModal").style.display==="flex"){closePreview();return;}
+    if(document.getElementById("modalOverlay").style.display==="flex"){hideModal();return;}
+    closeGallery();
+  }
+  if(document.getElementById("galleryModal").style.display==="flex"){if(e.key==='ArrowLeft')galleryPrev();if(e.key==='ArrowRight')galleryNext();}
+});
   </script>
 </body>
-
 </html>

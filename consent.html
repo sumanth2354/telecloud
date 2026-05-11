@@ -2,8 +2,13 @@
 <html>
 
 <head>
-    <title>User Consent</title>
+    <title>TeleCloud | Consent</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 
@@ -12,11 +17,11 @@
         <div class="glass-container max-w-md fade-in">
             <h1 class="text-center logo">
                 <span class="material-symbols-rounded"
-                    style="font-size: 3rem; color: var(--accent-color);">security</span> Security Check
+                    style="font-size: 3rem; color: var(--accent-color);">security</span> TeleCloud
             </h1>
 
             <p style="margin-bottom: 25px; opacity: 0.8; line-height: 1.6;">
-                Before accessing the secure cloud storage, please confirm your understanding of the following protocols:
+                Before accessing your cloud storage, please confirm the following:
             </p>
 
             <div class="checkbox-wrapper">
@@ -26,7 +31,7 @@
 
             <div class="checkbox-wrapper">
                 <input type="checkbox" id="consent2" required>
-                <label for="consent2">I consent to temporary file buffering necessary for encryption/upload.</label>
+                <label for="consent2">I consent to temporary file buffering necessary for upload.</label>
             </div>
 
             <div class="checkbox-wrapper">
@@ -47,7 +52,7 @@
             </div>
 
             <div class="status-msg status-error" id="error-msg" style="display:none; align-items:center; gap:10px;">
-                <span class="material-symbols-rounded">warning</span> Please accept all security protocols to proceed.
+                <span class="material-symbols-rounded">warning</span> Please accept all items to proceed.
             </div>
 
             <div style="margin-top: 30px; display: flex; gap: 15px;">
@@ -72,7 +77,7 @@
 
             document.querySelector('.glass-container').style.opacity = '0';
             setTimeout(() => {
-                window.location.href = '/login';
+                window.location.href = '/upload-page';
             }, 300);
         }
 
@@ -83,10 +88,9 @@
         }
 
         if (localStorage.getItem('user_consent') === 'true') {
-            window.location.href = '/login';
+            window.location.href = '/upload-page';
         }
 
-        // Enter key to accept
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') acceptConsent();
         });

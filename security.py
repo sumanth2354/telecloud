@@ -58,17 +58,18 @@ def validate_file_upload(file):
     if not file:
         return False, "No file provided"
     
-    # Check file size (50MB limit)
-    MAX_FILE_SIZE = 50 * 1024 * 1024
-    if hasattr(file, 'content_length') and file.content_length > MAX_FILE_SIZE:
-        return False, "File too large. Maximum size is 50MB"
+    # Check file size (2GB — Telegram's own limit)
+    MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024
+    if hasattr(file, 'content_length') and file.content_length and file.content_length > MAX_FILE_SIZE:
+        return False, "File too large. Maximum size is 2GB"
     
     # Check file extension
     ALLOWED_EXTENSIONS = {
-        'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp',
+        'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg',
         'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-        'zip', 'rar', '7z', 'tar', 'gz',
-        'mp3', 'mp4', 'avi', 'mov', 'wmv'
+        'zip', 'rar', '7z', 'tar', 'gz', 'tgz',
+        'mp3', 'mp4', 'avi', 'mov', 'wmv', 'mkv', 'flac', 'aac', 'ogg',
+        'apk', 'iso', 'dmg',
     }
     
     filename = file.filename

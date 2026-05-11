@@ -2,8 +2,13 @@
 <html>
 
 <head>
-  <title>Login | Secure Cloud</title>
+  <title>TeleCloud | Login</title>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 
@@ -14,15 +19,15 @@
         <div style="margin-bottom: 10px; color: var(--accent-color);">
           <span class="material-symbols-rounded" style="font-size: 3rem;">lock</span>
         </div>
-        <h2 class="logo">Secure Login</h2>
+        <h2 class="logo">TeleCloud</h2>
         <p style="opacity: 0.7;">Authenticate via Telegram</p>
       </div>
 
       <!-- Step 1: Phone -->
       <div id="step1">
         <label style="display:block; margin-bottom:8px; font-weight:600;">
-          <span class="material-symbols-rounded" style="font-size:1.2em; vertical-align:bottom;">smartphone</span> Phone
-          Number
+          <span class="material-symbols-rounded" style="font-size:1.2em; vertical-align:bottom;">smartphone</span>
+          Phone Number
         </label>
         <div style="margin-bottom: 20px;">
           <input type="text" id="phone" value="+91" required>
@@ -33,8 +38,8 @@
       <!-- Step 2: OTP -->
       <div id="step2" style="display:none;">
         <label style="display:block; margin-bottom:8px; font-weight:600;">
-          <span class="material-symbols-rounded" style="font-size:1.2em; vertical-align:bottom;">vpn_key</span> Enter
-          OTP Code
+          <span class="material-symbols-rounded" style="font-size:1.2em; vertical-align:bottom;">vpn_key</span>
+          Enter OTP Code
         </label>
         <div style="margin-bottom: 20px;">
           <input type="text" id="otp" placeholder="e.g. 12345" required
@@ -63,6 +68,11 @@
   </div>
 
   <script>
+    function getCsrfToken() {
+      const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+      return m ? decodeURIComponent(m[1]) : '';
+    }
+
     function showStatus(msg, type) {
       const el = document.getElementById("status");
       el.style.display = "block";
@@ -84,74 +94,91 @@
 
       fetch("/send_code", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone })
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrfToken() },
+        body: JSON.stringify({ phone })
       })
         .then(res => res.json())
         .then(data => {
           btn.disabled = false;
           btn.innerText = "Send One-Time Password";
-
           if (data.status === "code_sent") {
             document.getElementById("step1").style.display = "none";
             document.getElementById("step2").style.display = "block";
             document.getElementById("step2").classList.add("fade-in");
-            showStatus("✅ OTP sent to your Telegram app!", "success");
+            showStatus("OTP sent to your Telegram app!", "success");
           } else {
-            showStatus("❌ " + data.message, "error");
+            showStatus(data.message || "Failed to send OTP", "error");
           }
         })
         .catch(() => {
           btn.disabled = false;
-          showStatus("❌ Network error. Check connection.", "error");
+          btn.innerText = "Send One-Time Password";
+          showStatus("Network error. Check connection.", "error");
         });
     }
 
     function verifyCode() {
       const phone = document.getElementById("phone").value.trim();
       const code = document.getElementById("otp").value.trim();
+      const btn = document.querySelector('#step2 button');
+      btn.disabled = true;
+      btn.innerText = "Verifying...";
 
       fetch("/verify_code", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone, code: code })
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrfToken() },
+        body: JSON.stringify({ phone, code })
       })
         .then(res => res.json())
         .then(data => {
+          btn.disabled = false;
+          btn.innerText = "Verify & Login";
           if (data.status === "success") {
-            localStorage.setItem("telegram_phone", phone);
-            showStatus("✅ Login successful! Redirecting...", "success");
-            setTimeout(() => window.location.href = "/upload-page", 1000);
+            showStatus("Login successful! Redirecting...", "success");
+            setTimeout(() => window.location.href = "/upload-page", 800);
           } else if (data.status === "2fa_required") {
             document.getElementById("step2").style.display = "none";
             document.getElementById("step3").style.display = "block";
             document.getElementById("step3").classList.add("fade-in");
-            showStatus("🔐 2FA Protected. Please enter password.", "success");
+            showStatus("2FA Protected. Please enter password.", "success");
           } else {
-            showStatus("❌ Invalid OTP or session expired.", "error");
+            showStatus("Invalid OTP or session expired.", "error");
           }
         })
-        .catch((e) => showStatus("❌ Error: " + e, "error"));
+        .catch(() => {
+          btn.disabled = false;
+          btn.innerText = "Verify & Login";
+          showStatus("Network error.", "error");
+        });
     }
 
     function verifyPassword() {
       const phone = document.getElementById("phone").value.trim();
       const password = document.getElementById("password").value;
+      const btn = document.querySelector('#step3 button');
+      btn.disabled = true;
+      btn.innerText = "Verifying...";
 
       fetch("/verify_password", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone, password: password })
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrfToken() },
+        body: JSON.stringify({ phone, password })
       })
         .then(res => res.json())
         .then(data => {
+          btn.disabled = false;
+          btn.innerText = "Unlock Account";
           if (data.status === "success") {
-            localStorage.setItem("telegram_phone", phone);
-            showStatus("✅ Authenticated! Redirecting...", "success");
-            setTimeout(() => window.location.href = "/upload-page", 1000);
+            showStatus("Authenticated! Redirecting...", "success");
+            setTimeout(() => window.location.href = "/upload-page", 800);
           } else {
-            showStatus("❌ Incorrect password.", "error");
+            showStatus("Incorrect password.", "error");
           }
+        })
+        .catch(() => {
+          btn.disabled = false;
+          btn.innerText = "Unlock Account";
+          showStatus("Network error.", "error");
         });
     }
   </script>
