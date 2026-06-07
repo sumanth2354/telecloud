@@ -47,7 +47,8 @@ TeleCloud is a **self-hosted file storage web application** built on top of Tele
 | 🔐 **Secure Auth** | OTP via Telegram + optional 2FA (Two-Step Verification) support. |
 | 🛡️ **CSRF Protection** | Double-submit cookie pattern on every mutating endpoint. |
 | ⏱️ **Rate Limiting** | Per-IP rate limiting (10 req/min, 100 req/hour) on all endpoints. |
-| 🔒 **Encrypted Storage** | Session tokens, API credentials, and folder metadata are AES-encrypted at rest using Fernet. |
+| 🔒 **Encrypted Storage** | Session tokens, API credentials, folder metadata, and share links configuration are AES-encrypted at rest using Fernet. |
+| 🔗 **Shareable Links** | Share folders or all files publicly with optional password protection, custom labels, and expiration times. |
 
 ---
 
@@ -80,7 +81,7 @@ TeleCloud is a **self-hosted file storage web application** built on top of Tele
 - **Single persistent event loop** — a background thread runs one `asyncio` loop for all Telegram I/O to avoid the "Event loop is closed" error.
 - **Client pool** — `TelegramClient` instances are cached per phone number and reused across requests.
 - **In-memory metadata cache** — file listings are cached for 5 minutes per user to reduce Telegram API calls.
-- **Fernet encryption** — `api_sessions.json` and `user_folders.json` are encrypted at rest with the `SECRET_KEY`.
+- **Fernet encryption** — `api_sessions.json`, `user_folders.json`, and `share_links.json` are encrypted at rest with the `SECRET_KEY`.
 
 ---
 
@@ -109,6 +110,7 @@ telecloud/
 ├── setup.html            # First-time Telegram API credentials setup
 ├── consent.html          # Landing / consent page (entry point)
 ├── privacy_policy.html   # Privacy policy page
+├── share.html            # Public sharing guest landing / folder preview page
 │
 ├── static/
 │   └── style.css         # Global dark-mode design system (glassmorphism)
@@ -119,6 +121,7 @@ telecloud/
 │
 ├── user_folders.json     # Fernet-encrypted folder metadata per user
 ├── api_sessions.json     # Fernet-encrypted Telegram API credentials per session
+├── share_links.json      # Fernet-encrypted share links metadata per user
 ├── app.log               # Application & security event log
 │
 ├── .env                  # SECRET_KEY and optional API_ID/API_HASH
@@ -220,6 +223,8 @@ The server starts at **http://127.0.0.1:5001**.
 | **Delete** | Select files and click Delete. |
 | **Move** | Select files, then choose "Move to Folder". |
 | **Rename folder** | Right-click or use the folder options menu. |
+| **Share folder** | Click the share icon on any folder card, configure options, and copy the link. |
+| **Manage shared links** | Toggle the "My Shared Links" section in the dashboard to view, edit, or delete active links. |
 
 ---
 
@@ -256,6 +261,15 @@ All mutating endpoints require:
 | `POST` | `/logout` | ❌ | Destroy session + purge API credentials |
 | `POST` | `/delete_data` | ✅ | Delete all local data for the user |
 | `GET` | `/privacy-policy` | ❌ | Privacy policy page |
+| `POST` | `/share/create` | ✅ | Create a share link for a folder or all files |
+| `GET` | `/share/list` | ✅ | List user's active share links |
+| `POST` | `/share/update/<token>` | ✅ | Update label, active state, password, expiry of a link |
+| `POST` | `/share/delete/<token>` | ✅ | Delete a share link |
+| `GET` | `/share/<token>` | ❌ | Guest page for shared folder/files |
+| `POST` | `/share/auth/<token>` | ❌ | Authenticate password-protected link |
+| `POST` | `/share/files/<token>` | ❌ | List files in a shared folder for guest |
+| `GET` | `/share/file/<token>/<msg_id>` | ❌ | Download/stream a file in a shared folder |
+| `GET` | `/share/thumb/<token>/<msg_id>` | ❌ | Get cached thumbnail in a shared folder |
 
 ---
 
@@ -264,7 +278,10 @@ All mutating endpoints require:
 TeleCloud is built with security in mind:
 
 - **No file retention** — uploaded files are staged in `uploads/` only during transmission, then immediately deleted from disk.
-- **Fernet encryption at rest** — `api_sessions.json` (Telegram API keys) and `user_folders.json` (folder metadata) are AES-encrypted using a `SECRET_KEY`.
+- **Fernet encryption at rest** — `api_sessions.json` (Telegram API credentials), `user_folders.json` (folder metadata), and `share_links.json` (share links configuration) are AES-encrypted using a `SECRET_KEY`.
+- **Password-protected sharing** — Guest links can be password-protected; passwords are salted and hashed using PBKDF2-HMAC-SHA256 (100,000 iterations). A signed session cookie (`share_session_<token>`) handles session verification.
+- **Link expiration** — Shared links support optional expiration timestamps, preventing access once the set date and time pass.
+- **Cascading deletion** — Logging out or deleting all account data automatically deletes all associated shared links.
 - **HttpOnly session cookies** — session tokens are never accessible to JavaScript.
 - **CSRF protection** — every `POST/PUT/DELETE` request is validated via the double-submit cookie pattern.
 - **Rate limiting** — each IP is limited to 10 requests/minute and 100 requests/hour.

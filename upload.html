@@ -145,6 +145,22 @@
       <div class="grid" id="searchGrid"></div>
       <div id="noSearchMsg" class="text-center" style="padding:40px;opacity:0.5;display:none;">No files match your search.</div>
     </div>
+
+    <!-- My Shared Links Section -->
+    <div class="glass-container fade-in" id="sharedLinksSection" style="margin-top:40px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;" onclick="toggleSharedLinks()">
+        <h3 style="margin:0;display:flex;align-items:center;gap:10px;">
+          <span class="material-symbols-rounded">share</span>
+          My Shared Links
+        </h3>
+        <span class="material-symbols-rounded" id="sharedLinksToggleIcon" style="transition:transform 0.3s;">expand_more</span>
+      </div>
+      
+      <div id="sharedLinksContent" style="margin-top:20px;display:none;">
+        <div id="sharedLinksList" style="display:flex;flex-direction:column;gap:12px;"></div>
+        <div id="noSharedLinksMsg" class="text-center" style="padding:20px;opacity:0.5;display:block;">No shared links created yet.</div>
+      </div>
+    </div>
   </div>
 
   <!-- Modal -->
@@ -545,7 +561,406 @@ document.addEventListener('keydown',e=>{
     if(document.getElementById("modalOverlay").style.display==="flex"){hideModal();return;}
     closeGallery();
   }
-  if(document.getElementById("galleryModal").style.display==="flex"){if(e.key==='ArrowLeft')galleryPrev();if(e.key==='ArrowRight')galleryNext();}
+  if (document.getElementById("galleryModal").style.display === "flex") { if (e.key === 'ArrowLeft') galleryPrev(); if (e.key === 'ArrowRight') galleryNext(); }
+});
+  </script>
+
+  <!-- Share Management Modal -->
+  <div id="shareModalOverlay" class="modal-overlay" style="display:none;">
+    <div class="glass-container max-w-md fade-in">
+      <h3 id="shareModalTitle" style="margin-bottom:16px; display:flex; align-items:center; gap:8px;">
+        <span class="material-symbols-rounded" style="color:var(--accent-color);">share</span>
+        Share Folder
+      </h3>
+      
+      <!-- Create State -->
+      <div id="shareModalCreateState">
+        <div style="margin-bottom:16px;">
+          <label style="display:block;margin-bottom:6px;font-size:0.9rem;opacity:0.8;">Link Label (Name)</label>
+          <input type="text" id="shareLabelInput" placeholder="e.g. My Shared Photos">
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block;margin-bottom:6px;font-size:0.9rem;opacity:0.8;">Access Password (Optional)</label>
+          <input type="password" id="sharePasswordInput" placeholder="Leave empty for no password">
+        </div>
+        <div style="margin-bottom:20px;">
+          <label style="display:block;margin-bottom:6px;font-size:0.9rem;opacity:0.8;">Expiry Date (Optional)</label>
+          <input type="datetime-local" id="shareExpiryInput" style="width:100%;padding:14px 18px;background:var(--input-bg);border:1px solid var(--glass-border);color:white;border-radius:10px;box-sizing:border-box;outline:none;">
+        </div>
+        <button class="btn btn-primary" id="shareCreateBtn" style="width:100%;">Create Link</button>
+      </div>
+      
+      <!-- Manage State -->
+      <div id="shareModalManageState" style="display:none;">
+        <div style="margin-bottom:16px;">
+          <label style="display:block;margin-bottom:6px;font-size:0.9rem;opacity:0.8;">Generated Share Link</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="shareLinkOutput" readonly style="flex:1;">
+            <button class="btn" onclick="copyShareLinkOutput()" style="padding:12px 16px;display:flex;align-items:center;justify-content:center;">
+              <span class="material-symbols-rounded">content_copy</span>
+            </button>
+          </div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block;margin-bottom:6px;font-size:0.9rem;opacity:0.8;">Link Label (Name)</label>
+          <input type="text" id="shareLabelManageInput" placeholder="Update label...">
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block;margin-bottom:6px;font-size:0.9rem;opacity:0.8;">Access Password (Optional)</label>
+          <input type="password" id="sharePasswordManageInput" placeholder="Enter new password, or leave empty to keep/clear">
+          <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:0.8rem;opacity:0.5;" id="sharePasswordStatus"></span>
+            <button class="btn btn-sm" id="shareClearPasswordBtn" style="padding:4px 8px;font-size:0.75rem;">Clear Password</button>
+          </div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block;margin-bottom:6px;font-size:0.9rem;opacity:0.8;">Expiry Date (Optional)</label>
+          <input type="datetime-local" id="shareExpiryManageInput" style="width:100%;padding:14px 18px;background:var(--input-bg);border:1px solid var(--glass-border);color:white;border-radius:10px;box-sizing:border-box;outline:none;">
+        </div>
+        
+        <div class="checkbox-wrapper" style="margin-bottom:20px;">
+          <input type="checkbox" id="shareActiveToggle" style="width:auto;margin:0;accent-color:var(--accent-color);">
+          <label for="shareActiveToggle">Link Active (guests can view)</label>
+        </div>
+        
+        <div style="display:flex;gap:12px;">
+          <button class="btn btn-primary" id="shareUpdateBtn" style="flex:1;">Save Settings</button>
+          <button class="btn btn-danger" id="shareDeleteBtn" style="padding:12px 20px;">
+            <span class="material-symbols-rounded">delete</span>
+          </button>
+        </div>
+      </div>
+      
+      <div style="margin-top:16px;border-top:1px solid var(--glass-border);padding-top:16px;">
+        <button class="btn" style="width:100%;" onclick="hideShareModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+/* ── Shareable Folder Links JS ────────────────────────────────── */
+let currentShareFolder = null;
+let currentShareToken = null;
+
+// Override loadFolders to insert the "Share" button next to folder cards
+loadFolders = async function() {
+  const r = await apiPost("/list_folders", {});
+  const d = await r.json();
+  const grid = document.getElementById("folderGrid");
+  grid.innerHTML = '';
+  if (d.status === "success") {
+    folders = d.folders;
+    if (!folders.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;opacity:0.5;"><span class="material-symbols-rounded" style="font-size:4rem;display:block;margin-bottom:12px;opacity:0.3;">create_new_folder</span>No folders yet. Create one!</div>';
+      return;
+    }
+    folders.forEach(f => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `<div class="card-actions">
+          <button class="card-action-btn" title="Share"><span class="material-symbols-rounded" style="font-size:1rem;">share</span></button>
+          <button class="card-action-btn" title="Rename"><span class="material-symbols-rounded" style="font-size:1rem;">edit</span></button>
+          <button class="card-action-btn" title="Delete"><span class="material-symbols-rounded" style="font-size:1rem;">delete</span></button>
+        </div>
+        <div class="card-icon"><span class="material-symbols-rounded" style="font-size:3rem;">folder</span></div>
+        <div class="card-title">${f}</div>`;
+      card.onclick = () => selectFolder(f, card);
+      
+      const btns = card.querySelectorAll('.card-action-btn');
+      btns[0].onclick = e => { e.stopPropagation(); openShareModal(f); };
+      btns[1].onclick = e => {
+        e.stopPropagation();
+        openModal('Rename Folder', 'New name...', 'Rename', async n => {
+          const r2 = await apiPost('/rename_folder', { old_name: f, new_name: n });
+          const d2 = await r2.json();
+          if (d2.status === 'success') {
+            showToast(`Renamed (${d2.renamed_files} files updated)`, 'success');
+            loadFolders();
+            loadFolderCounts();
+          } else showToast(d2.message);
+        });
+      };
+      btns[2].onclick = e => {
+        e.stopPropagation();
+        if (!confirm(`Remove folder "${f}"? Files stay in Telegram.`)) return;
+        apiPost('/delete_folder', { folder_name: f }).then(r2 => r2.json()).then(d2 => {
+          if (d2.status === 'success') {
+            showToast('Folder removed', 'success');
+            loadFolders();
+            loadFolderCounts();
+          } else showToast(d2.message);
+        });
+      };
+      grid.appendChild(card);
+    });
+  }
+};
+
+function toggleSharedLinks() {
+  const content = document.getElementById("sharedLinksContent");
+  const icon = document.getElementById("sharedLinksToggleIcon");
+  if (content.style.display === "none") {
+    content.style.display = "block";
+    icon.style.transform = "rotate(180deg)";
+    loadSharedLinks();
+  } else {
+    content.style.display = "none";
+    icon.style.transform = "rotate(0deg)";
+  }
+}
+
+function copyTextToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast("Link copied to clipboard!", "success");
+  }).catch(() => {
+    showToast("Failed to copy link.");
+  });
+}
+
+async function loadSharedLinks() {
+  const list = document.getElementById("sharedLinksList");
+  const noMsg = document.getElementById("noSharedLinksMsg");
+  list.innerHTML = '';
+  try {
+    const r = await authFetch("/share/list");
+    const d = await r.json();
+    if (d.status === "success") {
+      const links = d.links;
+      if (!links.length) {
+        noMsg.style.display = "block";
+        return;
+      }
+      noMsg.style.display = "none";
+      links.forEach(link => {
+        const item = document.createElement("div");
+        item.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid var(--glass-border);flex-wrap:wrap;gap:10px;";
+        
+        const isExpired = link.expires_at && new Date() > new Date(link.expires_at);
+        let badgeHtml = '';
+        if (!link.is_active) {
+          badgeHtml = `<span style="background:rgba(255,77,77,0.15);color:var(--error-color);border:1px solid rgba(255,77,77,0.25);padding:2px 8px;border-radius:999px;font-size:0.75rem;font-weight:600;">Disabled</span>`;
+        } else if (isExpired) {
+          badgeHtml = `<span style="background:rgba(255,160,0,0.15);color:#ffa000;border:1px solid rgba(255,160,0,0.25);padding:2px 8px;border-radius:999px;font-size:0.75rem;font-weight:600;">Expired</span>`;
+        } else {
+          badgeHtml = `<span style="background:rgba(0,230,118,0.15);color:var(--success-color);border:1px solid rgba(0,230,118,0.25);padding:2px 8px;border-radius:999px;font-size:0.75rem;font-weight:600;">Active</span>`;
+        }
+        
+        const folderInfo = link.folder_name ? `Folder: <strong>${link.folder_name}</strong>` : `<em>All Files</em>`;
+        const linkUrl = `${window.location.origin}/share/${link.token}`;
+        
+        item.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="font-weight:600;font-size:0.95rem;">${link.label}</div>
+            <div style="font-size:0.8rem;opacity:0.7;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              ${folderInfo} &middot; ${badgeHtml}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button class="btn btn-sm" onclick="copyTextToClipboard('${linkUrl}')" title="Copy Link">
+              <span class="material-symbols-rounded" style="font-size:1.1rem;vertical-align:middle;">content_copy</span> Copy
+            </button>
+            <button class="btn btn-sm" onclick="openShareModal('${link.folder_name || ''}', '${link.token}')" title="Manage">
+              <span class="material-symbols-rounded" style="font-size:1.1rem;vertical-align:middle;">settings</span> Settings
+            </button>
+          </div>
+        `;
+        list.appendChild(item);
+      });
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function openShareModal(folderName, token = null) {
+  currentShareFolder = folderName;
+  currentShareToken = token;
+  
+  document.getElementById("shareModalTitle").innerHTML = `
+    <span class="material-symbols-rounded" style="color:var(--accent-color);vertical-align:middle;margin-right:8px;">share</span>
+    Share Folder "${folderName || 'All Files'}"
+  `;
+  
+  if (!token) {
+    try {
+      const r = await authFetch("/share/list");
+      const d = await r.json();
+      if (d.status === "success") {
+        const existing = d.links.find(l => l.folder_name === folderName);
+        if (existing) {
+          currentShareToken = existing.token;
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  
+  if (currentShareToken) {
+    document.getElementById("shareModalCreateState").style.display = "none";
+    document.getElementById("shareModalManageState").style.display = "block";
+    
+    try {
+      const r = await authFetch("/share/list");
+      const d = await r.json();
+      if (d.status === "success") {
+        const link = d.links.find(l => l.token === currentShareToken);
+        if (link) {
+          const linkUrl = `${window.location.origin}/share/${link.token}`;
+          document.getElementById("shareLinkOutput").value = linkUrl;
+          document.getElementById("shareLabelManageInput").value = link.label || '';
+          document.getElementById("shareActiveToggle").checked = link.is_active;
+          
+          if (link.expires_at) {
+            const localExpiry = new Date(link.expires_at);
+            const offsetMs = localExpiry.getTimezoneOffset() * 60 * 1000;
+            const adjustedDate = new Date(localExpiry.getTime() - offsetMs);
+            document.getElementById("shareExpiryManageInput").value = adjustedDate.toISOString().slice(0, 16);
+          } else {
+            document.getElementById("shareExpiryManageInput").value = '';
+          }
+          document.getElementById("sharePasswordManageInput").value = '';
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  } else {
+    document.getElementById("shareModalCreateState").style.display = "block";
+    document.getElementById("shareModalManageState").style.display = "none";
+    
+    document.getElementById("shareLabelInput").value = folderName ? `Shared Folder: ${folderName}` : "My Shared Files";
+    document.getElementById("sharePasswordInput").value = '';
+    document.getElementById("shareExpiryInput").value = '';
+  }
+  
+  document.getElementById("shareModalOverlay").style.display = "flex";
+}
+
+function hideShareModal() {
+  document.getElementById("shareModalOverlay").style.display = "none";
+}
+
+function copyShareLinkOutput() {
+  const output = document.getElementById("shareLinkOutput");
+  copyTextToClipboard(output.value);
+}
+
+document.getElementById("shareCreateBtn").onclick = async () => {
+  const label = document.getElementById("shareLabelInput").value.trim();
+  const password = document.getElementById("sharePasswordInput").value;
+  const expiryVal = document.getElementById("shareExpiryInput").value;
+  
+  if (!label) {
+    showToast("Label is required.");
+    return;
+  }
+  
+  let expires_at = null;
+  if (expiryVal) {
+    expires_at = new Date(expiryVal).toISOString();
+  }
+  
+  try {
+    const r = await apiPost("/share/create", {
+      folder_name: currentShareFolder,
+      label,
+      password: password || null,
+      expires_at
+    });
+    const d = await r.json();
+    if (d.status === "success") {
+      showToast("Share link created successfully!", "success");
+      openShareModal(currentShareFolder, d.link.token);
+      loadSharedLinks();
+    } else {
+      showToast(d.message);
+    }
+  } catch (e) {
+    showToast("Failed to create share link.");
+  }
+};
+
+document.getElementById("shareUpdateBtn").onclick = async () => {
+  const label = document.getElementById("shareLabelManageInput").value.trim();
+  const password = document.getElementById("sharePasswordManageInput").value;
+  const expiryVal = document.getElementById("shareExpiryManageInput").value;
+  const is_active = document.getElementById("shareActiveToggle").checked;
+  
+  if (!label) {
+    showToast("Label is required.");
+    return;
+  }
+  
+  let expires_at = null;
+  if (expiryVal) {
+    expires_at = new Date(expiryVal).toISOString();
+  }
+  
+  const payload = {
+    label,
+    is_active,
+    expires_at
+  };
+  
+  if (password !== "") {
+    payload.password = password;
+  }
+  
+  try {
+    const r = await apiPost(`/share/update/${currentShareToken}`, payload);
+    const d = await r.json();
+    if (d.status === "success") {
+      showToast("Link settings updated!", "success");
+      hideShareModal();
+      loadSharedLinks();
+    } else {
+      showToast(d.message);
+    }
+  } catch (e) {
+    showToast("Failed to update settings.");
+  }
+};
+
+document.getElementById("shareClearPasswordBtn").onclick = async () => {
+  if (!confirm("Are you sure you want to remove the password protection?")) return;
+  try {
+    const r = await apiPost(`/share/update/${currentShareToken}`, { password: null });
+    const d = await r.json();
+    if (d.status === "success") {
+      showToast("Password removed successfully!", "success");
+      document.getElementById("sharePasswordManageInput").value = '';
+    } else {
+      showToast(d.message);
+    }
+  } catch (e) {
+    showToast("Failed to clear password.");
+  }
+};
+
+document.getElementById("shareDeleteBtn").onclick = async () => {
+  if (!confirm("Delete this share link? Guests will lose access immediately.")) return;
+  try {
+    const r = await apiPost(`/share/delete/${currentShareToken}`, {});
+    const d = await r.json();
+    if (d.status === "success") {
+      showToast("Share link deleted.", "success");
+      hideShareModal();
+      loadSharedLinks();
+    } else {
+      showToast(d.message);
+    }
+  } catch (e) {
+    showToast("Failed to delete link.");
+  }
+};
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById("shareModalOverlay").style.display === "flex") {
+      hideShareModal();
+    }
+  }
 });
   </script>
 </body>

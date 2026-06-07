@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TeleCloud | Shared Folder</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <div class="header">
+    <div class="logo">
+      <span class="material-symbols-rounded" style="vertical-align:bottom;margin-right:5px;">rocket_launch</span> TeleCloud
+    </div>
+    <div>
+      <span style="font-size:0.9rem;opacity:0.7;display:flex;align-items:center;gap:5px;">
+        <span class="material-symbols-rounded" style="font-size:1.1rem;color:var(--accent-color);">share</span> Shared Link
+      </span>
+    </div>
+  </div>
+
+  <div class="max-w-xl" style="padding:40px 20px;flex:1;">
+
+    <!-- Status Screen (Error / State states) -->
+    <div id="statusScreen" class="glass-container text-center fade-in" style="display:none; max-w: 600px; margin: 40px auto;">
+      <span id="statusIcon" class="material-symbols-rounded" style="font-size:4rem;color:var(--error-color);margin-bottom:20px;display:block;">block</span>
+      <h2 id="statusTitle" style="margin-bottom:10px;">Link Unavailable</h2>
+      <p id="statusDescription" style="opacity:0.7;font-size:1.05rem;line-height:1.6;margin:0;"></p>
+    </div>
+
+    <!-- Password Gate Form -->
+    <div id="passwordGate" class="glass-container max-w-md fade-in" style="display:none; margin: 60px auto;">
+      <div class="text-center" style="margin-bottom:24px;">
+        <span class="material-symbols-rounded" style="font-size:3.5rem;color:var(--accent-color);margin-bottom:12px;display:block;">lock</span>
+        <h3 style="margin:0 0 8px 0;">Password Required</h3>
+        <p style="opacity:0.6;font-size:0.95rem;margin:0;">This shared folder is password protected.</p>
+      </div>
+      <form id="passwordForm">
+        <div style="margin-bottom:16px;">
+          <input type="password" id="sharePassword" placeholder="Enter password" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Access Folder</button>
+      </form>
+    </div>
+
+    <!-- Main Shared Folder Content View -->
+    <div id="mainView" style="display:none;" class="fade-in">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;flex-wrap:wrap;gap:12px;">
+        <div>
+          <h2 id="folderLabel" style="margin-bottom:5px;"></h2>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="badge" style="background:rgba(112, 0, 255, 0.15);border:1px solid var(--glass-border);padding:4px 10px;border-radius:999px;font-size:0.8rem;font-weight:600;color:#cca4ff;">Shared folder</span>
+            <span id="fileCountText" style="opacity:0.6;font-size:0.9rem;"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid" id="fileGrid"></div>
+      <div id="noFilesMsg" class="text-center" style="padding:40px;opacity:0.5;display:none;">No files found in this shared folder.</div>
+
+      <!-- Pagination controls -->
+      <div id="loadMoreWrapper" class="text-center" style="margin-top:20px;display:none;">
+        <button class="btn btn-primary" onclick="loadMoreFiles()">Load More</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" style="display:none;"></div>
+
+  <!-- Preview Modal (video/audio/pdf) -->
+  <div id="previewModal" class="preview-overlay" style="display:none;">
+    <div class="preview-box">
+      <button class="preview-close" onclick="closePreview()">&times;</button>
+      <div class="preview-name" id="previewName"></div>
+      <div id="previewContent"></div>
+    </div>
+  </div>
+
+  <!-- Gallery -->
+  <div id="galleryModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:1000;align-items:center;justify-content:center;flex-direction:column;">
+    <button onclick="closeGallery()" style="position:absolute;top:20px;right:30px;background:none;border:none;color:white;font-size:40px;cursor:pointer;z-index:10;">&times;</button>
+    <div style="position:relative;width:90%;height:80%;display:flex;align-items:center;justify-content:center;">
+      <button onclick="galleryPrev()" style="position:absolute;left:0;background:rgba(255,255,255,0.1);border:none;color:white;padding:20px;cursor:pointer;border-radius:50%;z-index:5;"><span class="material-symbols-rounded">chevron_left</span></button>
+      <div id="gallerySpinner" class="gallery-spinner"></div>
+      <img id="galleryImage" style="max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 0 50px rgba(0,0,0,0.5);">
+      <button onclick="galleryNext()" style="position:absolute;right:0;background:rgba(255,255,255,0.1);border:none;color:white;padding:20px;cursor:pointer;border-radius:50%;z-index:5;"><span class="material-symbols-rounded">chevron_right</span></button>
+    </div>
+    <div id="galleryCounter" style="margin-top:20px;color:white;font-size:1.1rem;"></div>
+  </div>
+
+  <script>
+    const token = window.location.pathname.split('/').pop();
+    let offset = 0;
+    const limit = 50;
+    let filesList = [];
+    let galleryImages = [];
+    let galleryIndex = 0;
+
+    function getCsrfToken() {
+      const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+      return m ? decodeURIComponent(m[1]) : '';
+    }
+
+    let _toastTimer;
+    function showToast(m, t='error') {
+      const e = document.getElementById("toast");
+      e.innerText = m;
+      e.className = `toast toast-${t}`;
+      e.style.display = "block";
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => e.style.display = "none", 4000);
+    }
+
+    function formatFileSize(b) {
+      if (!b) return '0 B';
+      const k = 1024, s = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(b) / Math.log(k));
+      return parseFloat((b / Math.pow(k, i)).toFixed(2)) + ' ' + s[i];
+    }
+
+    function formatDate(d) {
+      if (!d) return '';
+      const dt = new Date(d), now = new Date(), diff = now - dt;
+      if (diff < 86400000) return 'Today';
+      if (diff < 172800000) return 'Yesterday';
+      if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago';
+      return dt.toLocaleDateString('en', {month: 'short', day: 'numeric'});
+    }
+
+    function getFileIcon(m) {
+      const s = 'style="font-size:3rem;"';
+      if (!m) return `<span class="material-symbols-rounded" ${s}>description</span>`;
+      if (m.includes('pdf')) return `<span class="material-symbols-rounded" ${s}>picture_as_pdf</span>`;
+      if (m.includes('video')) return `<span class="material-symbols-rounded" ${s}>movie</span>`;
+      if (m.includes('audio')) return `<span class="material-symbols-rounded" ${s}>music_note</span>`;
+      return `<span class="material-symbols-rounded" ${s}>description</span>`;
+    }
+
+    function getCategoryIcon(c, f) {
+      const s = 'style="font-size:3rem;"';
+      if (c === "APK") return `<span class="material-symbols-rounded" ${s}>android</span>`;
+      if (c === "Videos") return `<span class="material-symbols-rounded" ${s}>movie</span>`;
+      if (c === "Audio") return `<span class="material-symbols-rounded" ${s}>music_note</span>`;
+      if (c === "Documents") return f.mime_type && f.mime_type.includes("pdf") ? `<span class="material-symbols-rounded" ${s}>picture_as_pdf</span>` : `<span class="material-symbols-rounded" ${s}>description</span>`;
+      if (c === "Archives") return `<span class="material-symbols-rounded" ${s}>archive</span>`;
+      return `<span class="material-symbols-rounded" ${s}>attach_file</span>`;
+    }
+
+    function showSkeleton(c, n) {
+      c.innerHTML = '';
+      for (let i = 0; i < n; i++) {
+        const d = document.createElement('div');
+        d.className = 'card skeleton';
+        d.innerHTML = `<div style="width:100%;height:120px;background:rgba(255,255,255,0.05);border-radius:8px;margin-bottom:10px;"></div><div style="width:70%;height:14px;background:rgba(255,255,255,0.05);border-radius:4px;margin-bottom:8px;"></div><div style="width:40%;height:12px;background:rgba(255,255,255,0.05);border-radius:4px;"></div>`;
+        c.appendChild(d);
+      }
+    }
+
+    function showStatusScreen(title, description, icon = 'block', iconColor = 'var(--error-color)') {
+      document.getElementById("passwordGate").style.display = "none";
+      document.getElementById("mainView").style.display = "none";
+      
+      const ss = document.getElementById("statusScreen");
+      document.getElementById("statusTitle").innerText = title;
+      document.getElementById("statusDescription").innerText = description;
+      
+      const iconEl = document.getElementById("statusIcon");
+      iconEl.innerText = icon;
+      iconEl.style.color = iconColor;
+      
+      ss.style.display = "block";
+    }
+
+    async function loadFiles(isRefresh = false) {
+      if (isRefresh) {
+        offset = 0;
+        filesList = [];
+      }
+      
+      const grid = document.getElementById("fileGrid");
+      if (offset === 0) {
+        showSkeleton(grid, 6);
+        document.getElementById("noFilesMsg").style.display = "none";
+      }
+
+      try {
+        const r = await fetch(`/share/files/${token}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": getCsrfToken()
+          },
+          body: JSON.stringify({ offset, limit })
+        });
+
+        if (r.status === 401) {
+          const d = await r.json();
+          if (d.requires_password) {
+            document.getElementById("statusScreen").style.display = "none";
+            document.getElementById("mainView").style.display = "none";
+            document.getElementById("passwordGate").style.display = "block";
+            document.getElementById("sharePassword").focus();
+            return;
+          }
+        }
+
+        if (r.status === 403) {
+          const txt = await r.text();
+          if (txt.includes("expired")) {
+            showStatusScreen("Link Expired", "This link has expired", "history", "var(--error-color)");
+          } else {
+            showStatusScreen("Link Disabled", "This link has been disabled", "block", "var(--error-color)");
+          }
+          return;
+        }
+
+        if (r.status === 503) {
+          showStatusScreen("Owner Offline", "Owner offline — files temporarily unavailable", "wifi_off", "var(--error-color)");
+          return;
+        }
+
+        if (r.status === 404) {
+          showStatusScreen("Not Found", "The requested shared folder could not be found.", "error", "var(--error-color)");
+          return;
+        }
+
+        const d = await r.json();
+        if (d.status === "success") {
+          document.getElementById("passwordGate").style.display = "none";
+          document.getElementById("statusScreen").style.display = "none";
+          document.getElementById("mainView").style.display = "block";
+
+          document.getElementById("folderLabel").innerText = d.label || d.folder_name || "Shared Folder";
+          document.getElementById("fileCountText").innerText = `${d.total} file${d.total !== 1 ? 's' : ''}`;
+
+          filesList = filesList.concat(d.files);
+          offset += d.files.length;
+
+          renderFiles();
+          document.getElementById("loadMoreWrapper").style.display = d.has_more ? "block" : "none";
+        } else {
+          showToast(d.message || "Failed to load files");
+        }
+      } catch (e) {
+        console.error(e);
+        showToast("An error occurred while loading files.");
+      }
+    }
+
+    function renderFiles() {
+      const grid = document.getElementById("fileGrid");
+      grid.innerHTML = '';
+
+      if (!filesList.length) {
+        document.getElementById("noFilesMsg").style.display = "block";
+        return;
+      }
+      document.getElementById("noFilesMsg").style.display = "none";
+
+      const images = filesList.filter(f => f.mime_type && f.mime_type.startsWith('image/'));
+      const imgMap = new Map();
+      images.forEach((f, i) => imgMap.set(f.id, i));
+
+      filesList.forEach(file => {
+        const card = document.createElement("div");
+        card.className = "card";
+        const isImage = file.mime_type && file.mime_type.startsWith("image/");
+        const isVideo = file.mime_type && file.mime_type.startsWith("video/");
+        const isAudio = file.mime_type && file.mime_type.startsWith("audio/");
+        const isPdf = file.mime_type && file.mime_type.includes("pdf");
+
+        let preview;
+        if (isImage) {
+          preview = `<img src="/share/thumb/${token}/${file.id}" loading="lazy" style="width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:10px;">`;
+        } else {
+          preview = `<div class="card-icon">${getFileIcon(file.mime_type)}</div>`;
+        }
+
+        card.innerHTML = `${preview}
+          <div class="card-title" style="font-size:0.85rem;">${file.name}</div>
+          <div class="card-meta">${formatFileSize(file.size)} \u00B7 ${formatDate(file.date)}</div>
+          <a href="/share/file/${token}/${file.id}" download class="card-download" title="Download"><span class="material-symbols-rounded" style="font-size:1.1rem;">download</span></a>`;
+
+        if (isImage) {
+          card.onclick = () => {
+            const idx = imgMap.get(file.id);
+            if (typeof idx === 'number') openGallery(images, idx);
+          };
+        } else if (isVideo || isAudio || isPdf) {
+          card.onclick = () => openPreview(file.id, file.mime_type, file.name);
+        } else {
+          card.onclick = () => window.open(`/share/file/${token}/${file.id}`);
+        }
+        card.querySelector('.card-download')?.addEventListener('click', e => e.stopPropagation());
+        grid.appendChild(card);
+      });
+    }
+
+    function loadMoreFiles() {
+      loadFiles(false);
+    }
+
+    /* ── Password Submission ──────────────────────────────────────── */
+    document.getElementById("passwordForm").addEventListener("submit", async function(e) {
+      e.preventDefault();
+      const pw = document.getElementById("sharePassword").value;
+      try {
+        const r = await fetch(`/share/auth/${token}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": getCsrfToken()
+          },
+          body: JSON.stringify({ password: pw })
+        });
+        const d = await r.json();
+        if (r.status === 200 && d.status === "success") {
+          showToast("Access granted!", "success");
+          loadFiles(true);
+        } else {
+          showToast(d.message || "Invalid password");
+        }
+      } catch (_) {
+        showToast("Authentication failed.");
+      }
+    });
+
+    /* ── Gallery ──────────────────────────────────────────────────── */
+    const galleryImg = document.getElementById("galleryImage");
+    galleryImg.onload = () => document.getElementById("gallerySpinner").style.display = "none";
+    
+    function openGallery(images, index) {
+      galleryImages = images;
+      galleryIndex = index;
+      document.getElementById("galleryModal").style.display = "flex";
+      updateGallery();
+    }
+    
+    function updateGallery() {
+      document.getElementById("gallerySpinner").style.display = "block";
+      const f = galleryImages[galleryIndex];
+      galleryImg.src = `/share/file/${token}/${f.id}`;
+      document.getElementById("galleryCounter").innerText = `${galleryIndex + 1} / ${galleryImages.length}`;
+    }
+    
+    function closeGallery() {
+      document.getElementById("galleryModal").style.display = "none";
+    }
+    
+    function galleryPrev() {
+      galleryIndex = (galleryIndex - 1 + galleryImages.length) % galleryImages.length;
+      updateGallery();
+    }
+    
+    function galleryNext() {
+      galleryIndex = (galleryIndex + 1) % galleryImages.length;
+      updateGallery();
+    }
+
+    /* ── Preview (video/audio/pdf) ────────────────────────────────── */
+    function openPreview(fileId, mime, name) {
+      const content = document.getElementById("previewContent");
+      document.getElementById("previewName").innerHTML = `<span class="material-symbols-rounded" style="font-size:1.2rem;">${mime.includes('video') ? 'movie' : mime.includes('audio') ? 'music_note' : 'picture_as_pdf'}</span> ${name}`;
+      if (mime.startsWith("video/")) {
+        content.innerHTML = `<video src="/share/file/${token}/${fileId}" controls autoplay style="width:100%;max-height:80vh;"></video>`;
+      } else if (mime.startsWith("audio/")) {
+        content.innerHTML = `<div style="padding:40px;text-align:center;"><audio src="/share/file/${token}/${fileId}" controls autoplay style="width:100%;"></audio></div>`;
+      } else if (mime.includes("pdf")) {
+        content.innerHTML = `<iframe src="/share/file/${token}/${fileId}" style="width:100%;height:80vh;"></iframe>`;
+      }
+      document.getElementById("previewModal").style.display = "flex";
+    }
+    
+    function closePreview() {
+      document.getElementById("previewModal").style.display = "none";
+      document.getElementById("previewContent").innerHTML = '';
+    }
+
+    /* ── Keyboard ─────────────────────────────────────────────────── */
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        if (document.getElementById("previewModal").style.display === "flex") { closePreview(); return; }
+        closeGallery();
+      }
+      if (document.getElementById("galleryModal").style.display === "flex") {
+        if (e.key === 'ArrowLeft') galleryPrev();
+        if (e.key === 'ArrowRight') galleryNext();
+      }
+    });
+
+    // Run on init
+    loadFiles(true);
+  </script>
+</body>
+</html>

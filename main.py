@@ -1212,6 +1212,537 @@ def get_thumbnail(msg_id):
         return "Not found", 404
 
 
+# ── Shareable links helpers & routes ──────────────────────────────
+
+SHARE_LINKS_FILE = 'share_links.json'
+
+def load_share_links():
+    if os.path.exists(SHARE_LINKS_FILE):
+        try:
+            with open(SHARE_LINKS_FILE, 'rb') as f:
+                encrypted_data = f.read()
+            decrypted_data = cipher.decrypt(encrypted_data)
+            return json.loads(decrypted_data)
+        except Exception:
+            try:
+                with open(SHARE_LINKS_FILE, 'r') as f:
+                    return json.load(f)
+            except Exception:
+                logger.error("Error reading share links file")
+    return {}
+
+def save_share_links(data):
+    try:
+        json_data = json.dumps(data).encode()
+        encrypted_data = cipher.encrypt(json_data)
+        with open(SHARE_LINKS_FILE, 'wb') as f:
+            f.write(encrypted_data)
+    except Exception as e:
+        logger.error(f"Error saving share links: {e}")
+
+def hash_password(password):
+    if not password:
+        return None
+    salt = secrets.token_hex(16)
+    iterations = 100000
+    digest = hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode('utf-8'),
+        salt.encode('utf-8'),
+        iterations
+    ).hex()
+    return f"{salt}${iterations}${digest}"
+
+def verify_password_hash(password, stored_hash):
+    if not stored_hash or not password:
+        return False
+    try:
+        salt, iterations, digest = stored_hash.split('$')
+        iterations = int(iterations)
+        calc = hashlib.pbkdf2_hmac(
+            'sha256',
+            password.encode('utf-8'),
+            salt.encode('utf-8'),
+            iterations
+        ).hex()
+        return secrets.compare_digest(calc, digest)
+    except Exception:
+        return False
+
+def is_expired(expires_at):
+    if not expires_at:
+        return False
+    from datetime import datetime, timezone
+    try:
+        exp_dt = datetime.fromisoformat(expires_at)
+        if exp_dt.tzinfo is not None:
+            now = datetime.now(timezone.utc)
+        else:
+            now = datetime.utcnow()
+        return now > exp_dt
+    except Exception as e:
+        logger.error(f"Error checking expiry: {e}")
+        return False
+
+def delete_user_share_links(phone):
+    if not phone:
+        return
+    try:
+        phone_hash = hashlib.sha256(phone.encode()).hexdigest()
+        links = load_share_links()
+        updated_links = {t: l for t, l in links.items() if l.get('phone_hash') != phone_hash}
+        if len(links) != len(updated_links):
+            save_share_links(updated_links)
+            logger.info(f"Cascade deleted share links for phone_hash: {phone_hash}")
+    except Exception as e:
+        logger.error(f"Error cascade deleting share links: {e}")
+
+def validate_guest_token(token, check_password=True):
+    from itsdangerous import TimestampSigner, SignatureExpired, BadSignature
+    links = load_share_links()
+    record = links.get(token)
+    if not record:
+        return 404, {"status": "error", "message": "Link not found"}, None
+
+    if not record.get("is_active") or record.get("permission") == "disabled":
+        return 403, {"status": "error", "message": "This link has been disabled"}, record
+
+    if is_expired(record.get("expires_at")):
+        return 403, {"status": "error", "message": "This link has expired"}, record
+
+    if check_password and record.get("password_hash"):
+        cookie_name = f"share_session_{token}"
+        cookie_val = request.cookies.get(cookie_name)
+        if not cookie_val:
+            return 401, {"requires_password": True}, record
+        try:
+            signer = TimestampSigner(SECRET_KEY)
+            unsigned = signer.unsign(cookie_val.encode('utf-8'), max_age=3600).decode('utf-8')
+            if unsigned != token:
+                return 401, {"requires_password": True}, record
+        except (SignatureExpired, BadSignature):
+            return 401, {"requires_password": True}, record
+
+    return None, None, record
+
+def get_owner_client_and_phone(phone_hash):
+    owner_phone = None
+    
+    # 1. Search in active sessions
+    for sess in _sessions.values():
+        if hashlib.sha256(sess['phone'].encode()).hexdigest() == phone_hash:
+            owner_phone = sess['phone']
+            break
+            
+    # 2. Search in user_folders
+    if not owner_phone:
+        try:
+            user_folders = load_user_folders()
+            for p in user_folders.keys():
+                if hashlib.sha256(p.encode()).hexdigest() == phone_hash:
+                    owner_phone = p
+                    break
+        except Exception:
+            pass
+            
+    if not owner_phone:
+        return None, None
+        
+    client = _clients.get(owner_phone)
+    if client and client.is_connected():
+        return client, owner_phone
+        
+    # If the owner has an active session, try to reconnect the client to the pool
+    owner_has_session = any(s['phone'] == owner_phone for s in _sessions.values())
+    if owner_has_session:
+        try:
+            client = run_async(get_client(owner_phone, require_authorized=True))
+            if client and client.is_connected():
+                return client, owner_phone
+        except Exception as e:
+            logger.error(f"Failed to auto-connect owner client for share link: {e}")
+            
+    return None, None
+
+@app.route('/share/create', methods=['POST'])
+@rate_limit
+@require_auth
+def share_create():
+    try:
+        phone = request.phone
+        phone_hash = hashlib.sha256(phone.encode()).hexdigest()
+        data = request.get_json() or {}
+        
+        folder_name = sanitize_input(data.get('folder_name'))
+        if folder_name == '':
+            folder_name = None
+            
+        label = sanitize_input(data.get('label', ''))
+        if not label:
+            return jsonify({"status": "error", "message": "Label is required"}), 400
+            
+        expires_at = data.get('expires_at')
+        password = data.get('password')
+        
+        token = secrets.token_urlsafe(32)
+        password_hash = hash_password(password) if password else None
+        
+        from datetime import datetime, timezone
+        created_at = datetime.now(timezone.utc).isoformat()
+        
+        record = {
+            "token": token,
+            "phone_hash": phone_hash,
+            "folder_name": folder_name,
+            "permission": "view",
+            "created_at": created_at,
+            "expires_at": expires_at or None,
+            "is_active": True,
+            "password_hash": password_hash,
+            "label": label
+        }
+        
+        links = load_share_links()
+        links[token] = record
+        save_share_links(links)
+        
+        log_security_event("SHARE_LINK_CREATED", f"Label: {label}, Token: {token}", phone)
+        return jsonify({"status": "success", "link": record})
+    except Exception as e:
+        logger.error(f"SHARE CREATE ERROR: {e}")
+        return jsonify({"status": "error", "message": "Failed to create share link"}), 500
+
+@app.route('/share/list', methods=['GET'])
+@rate_limit
+@require_auth
+def share_list():
+    try:
+        phone = request.phone
+        phone_hash = hashlib.sha256(phone.encode()).hexdigest()
+        
+        links = load_share_links()
+        user_links = [
+            {k: v for k, v in item.items() if k != 'password_hash'}
+            for item in links.values()
+            if item.get('phone_hash') == phone_hash
+        ]
+        
+        user_links.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        return jsonify({"status": "success", "links": user_links})
+    except Exception as e:
+        logger.error(f"SHARE LIST ERROR: {e}")
+        return jsonify({"status": "error", "message": "Failed to list share links"}), 500
+
+@app.route('/share/update/<token>', methods=['POST'])
+@rate_limit
+@require_auth
+def share_update(token):
+    try:
+        phone = request.phone
+        phone_hash = hashlib.sha256(phone.encode()).hexdigest()
+        
+        links = load_share_links()
+        record = links.get(token)
+        if not record or record.get('phone_hash') != phone_hash:
+            return jsonify({"status": "error", "message": "Link not found"}), 404
+            
+        data = request.get_json() or {}
+        
+        if 'is_active' in data:
+            record['is_active'] = bool(data['is_active'])
+            record['permission'] = "view" if record['is_active'] else "disabled"
+            
+        if 'expires_at' in data:
+            record['expires_at'] = data['expires_at'] or None
+            
+        if 'password' in data:
+            password = data['password']
+            if password is not None and password != "":
+                record['password_hash'] = hash_password(password)
+            else:
+                record['password_hash'] = None
+                
+        if 'label' in data:
+            label = sanitize_input(data['label'])
+            if label:
+                record['label'] = label
+                
+        links[token] = record
+        save_share_links(links)
+        
+        log_security_event("SHARE_LINK_UPDATED", f"Token: {token}", phone)
+        return jsonify({"status": "success", "link": {k: v for k, v in record.items() if k != 'password_hash'}})
+    except Exception as e:
+        logger.error(f"SHARE UPDATE ERROR: {e}")
+        return jsonify({"status": "error", "message": "Failed to update share link"}), 500
+
+@app.route('/share/delete/<token>', methods=['POST'])
+@rate_limit
+@require_auth
+def share_delete(token):
+    try:
+        phone = request.phone
+        phone_hash = hashlib.sha256(phone.encode()).hexdigest()
+        
+        links = load_share_links()
+        record = links.get(token)
+        if not record or record.get('phone_hash') != phone_hash:
+            return jsonify({"status": "error", "message": "Link not found"}), 404
+            
+        del links[token]
+        save_share_links(links)
+        
+        log_security_event("SHARE_LINK_DELETED", f"Token: {token}", phone)
+        return jsonify({"status": "success", "message": "Link deleted"})
+    except Exception as e:
+        logger.error(f"SHARE DELETE ERROR: {e}")
+        return jsonify({"status": "error", "message": "Failed to delete share link"}), 500
+
+@app.route('/share/<token>', methods=['GET'])
+@rate_limit
+def share_page(token):
+    status_code, err, record = validate_guest_token(token, check_password=False)
+    if status_code:
+        if status_code == 404:
+            return "Link not found", 404
+        return err.get("message", "Forbidden"), status_code
+        
+    log_security_event("SHARE_LINK_VIEWED", f"Token: {token}")
+    return send_from_directory('.', 'share.html')
+
+@app.route('/share/auth/<token>', methods=['POST'])
+@rate_limit
+def share_auth(token):
+    try:
+        status_code, err, record = validate_guest_token(token, check_password=False)
+        if status_code:
+            if status_code == 404:
+                return jsonify({"status": "error", "message": "Link not found"}), 404
+            return jsonify({"status": "error", "message": err.get("message")}), status_code
+            
+        data = request.get_json() or {}
+        password = data.get('password', '')
+        
+        success = verify_password_hash(password, record.get('password_hash'))
+        log_security_event("SHARE_PASSWORD_ATTEMPT", f"Token: {token}, success: {success}")
+        
+        if not success:
+            return jsonify({"status": "error", "message": "Invalid password"}), 401
+            
+        from itsdangerous import TimestampSigner
+        signer = TimestampSigner(SECRET_KEY)
+        cookie_val = signer.sign(token.encode('utf-8')).decode('utf-8')
+        
+        resp = make_response(jsonify({"status": "success"}))
+        resp.set_cookie(
+            f"share_session_{token}",
+            cookie_val,
+            httponly=True,
+            secure=IS_SECURE,
+            samesite="Lax",
+            max_age=3600,
+            path="/"
+        )
+        return resp
+    except Exception as e:
+        logger.error(f"SHARE AUTH ERROR: {e}")
+        return jsonify({"status": "error", "message": "Authentication failed"}), 500
+
+@app.route('/share/files/<token>', methods=['POST'])
+@rate_limit
+def share_files(token):
+    try:
+        status_code, err, record = validate_guest_token(token, check_password=True)
+        if status_code:
+            return jsonify(err), status_code
+            
+        client, owner_phone = get_owner_client_and_phone(record.get('phone_hash'))
+        if not client:
+            return jsonify({"status": "error", "message": "Files temporarily unavailable — owner session is offline"}), 503
+            
+        data = request.get_json() or {}
+        offset = int(data.get('offset', 0))
+        limit = int(data.get('limit', PAGE_SIZE))
+        
+        folder_name = record.get('folder_name')
+        
+        async def _do():
+            if folder_name:
+                messages = await client.get_messages("me", limit=200)
+                files = []
+                for msg in messages:
+                    if msg.file and msg.text and msg.text.strip() == folder_name:
+                        name = msg.file.name or f"file_{msg.id}"
+                        mime = msg.file.mime_type or "application/octet-stream"
+                        files.append({
+                            "id": msg.id,
+                            "name": name,
+                            "size": msg.file.size or 0,
+                            "mime_type": mime,
+                            "date": msg.date.isoformat() if msg.date else None,
+                            "category": categorize_saved_file(name, mime)
+                        })
+                files.sort(key=lambda x: x.get("date") or "", reverse=True)
+                return files
+            else:
+                max_raw = os.getenv("MAX_SCAN_MESSAGES", "2000")
+                max_scan = None if str(max_raw).strip() == "0" else int(max_raw)
+                files = []
+                seen = set()
+                async for msg in client.iter_messages("me", limit=max_scan):
+                    if not msg or not msg.file or msg.id in seen:
+                        continue
+                    seen.add(msg.id)
+                    name = msg.file.name or f"file_{msg.id}"
+                    mime = msg.file.mime_type or "application/octet-stream"
+                    files.append({
+                        "id": msg.id,
+                        "name": name,
+                        "size": msg.file.size or 0,
+                        "mime_type": mime,
+                        "date": msg.date.isoformat() if msg.date else None,
+                        "category": categorize_saved_file(name, mime)
+                    })
+                files.sort(key=lambda x: x.get("date") or "", reverse=True)
+                return files
+
+        files = run_async(_do())
+        page = files[offset:offset + limit]
+        
+        return jsonify({
+            "status": "success",
+            "files": page,
+            "total": len(files),
+            "has_more": offset + limit < len(files),
+            "label": record.get('label'),
+            "folder_name": folder_name
+        })
+    except Exception as e:
+        logger.error(f"SHARE FILES ERROR: {e}")
+        return jsonify({"status": "error", "message": "Failed to list files"}), 500
+
+@app.route('/share/file/<token>/<int:msg_id>', methods=['GET'])
+@rate_limit
+def share_get_file(token, msg_id):
+    try:
+        status_code, err, record = validate_guest_token(token, check_password=True)
+        if status_code:
+            return err.get("message", "Forbidden"), status_code
+            
+        client, owner_phone = get_owner_client_and_phone(record.get('phone_hash'))
+        if not client:
+            return "Files temporarily unavailable — owner session is offline", 503
+            
+        folder_name = record.get('folder_name')
+        if_none = request.headers.get('If-None-Match')
+        etag = f'"{msg_id}"'
+        if if_none == etag:
+            return Response(status=304)
+
+        async def _do():
+            message = await client.get_messages("me", ids=msg_id)
+            if not message or not message.file:
+                return None, None, None, None
+                
+            if folder_name and (not message.text or message.text.strip() != folder_name):
+                return None, None, None, "unauthorized"
+                
+            file_bytes = await message.download_media(bytes)
+            mime = message.file.mime_type or 'application/octet-stream'
+            name = message.file.name or f"file_{msg_id}"
+            return file_bytes, mime, name, None
+
+        file_bytes, mime, name, err_type = run_async(_do())
+        if err_type == "unauthorized":
+            return "Unauthorized", 403
+        if file_bytes is None:
+            return "File not found", 404
+
+        log_security_event("SHARE_FILE_DOWNLOADED", f"Token: {token}, msg_id: {msg_id}", owner_phone)
+
+        resp = Response(file_bytes, mimetype=mime)
+        resp.headers['Content-Disposition'] = f'inline; filename="{name}"'
+        resp.headers['Cache-Control'] = 'public, max-age=86400'
+        resp.headers['ETag'] = etag
+        return resp
+    except Exception as e:
+        logger.error(f"SHARE GET FILE ERROR: {e}")
+        return "File not found", 404
+
+@app.route('/share/thumb/<token>/<int:msg_id>', methods=['GET'])
+@rate_limit
+def share_get_thumbnail(token, msg_id):
+    try:
+        status_code, err, record = validate_guest_token(token, check_password=True)
+        if status_code:
+            return err.get("message", "Forbidden"), status_code
+            
+        client, owner_phone = get_owner_client_and_phone(record.get('phone_hash'))
+        if not client:
+            return "Files temporarily unavailable — owner session is offline", 503
+            
+        folder_name = record.get('folder_name')
+        owner_phone_hash_16 = record.get('phone_hash')[:16]
+        
+        thumb_file = f"{owner_phone_hash_16}_{msg_id}.jpg"
+        thumb_path = os.path.join(os.path.abspath(THUMB_FOLDER), thumb_file)
+
+        if os.path.exists(thumb_path):
+            resp = send_from_directory(
+                os.path.abspath(THUMB_FOLDER), thumb_file,
+                mimetype='image/jpeg'
+            )
+            resp.headers['Cache-Control'] = 'public, max-age=604800'
+            return resp
+
+        async def _do():
+            message = await client.get_messages("me", ids=msg_id)
+            if not message or not message.file:
+                return None, "not_found"
+                
+            if folder_name and (not message.text or message.text.strip() != folder_name):
+                return None, "unauthorized"
+
+            if message.document and getattr(message.document, 'thumbs', None):
+                try:
+                    data = await message.download_media(bytes, thumb=0)
+                    if data:
+                        return data, None
+                except Exception:
+                    pass
+
+            if message.photo:
+                try:
+                    data = await message.download_media(bytes, thumb=0)
+                    if data:
+                        return data, None
+                except Exception:
+                    pass
+
+            mime = message.file.mime_type or ''
+            if mime.startswith('image/') and message.file.size and message.file.size < 500_000:
+                data = await message.download_media(bytes)
+                return data, None
+
+            return None, "not_found"
+
+        thumb_bytes, err_type = run_async(_do())
+        if err_type == "unauthorized":
+            return "Unauthorized", 403
+        if not thumb_bytes:
+            return "Not found", 404
+
+        with open(thumb_path, 'wb') as f:
+            f.write(thumb_bytes)
+
+        resp = Response(thumb_bytes, mimetype='image/jpeg')
+        resp.headers['Cache-Control'] = 'public, max-age=604800'
+        return resp
+    except Exception as e:
+        logger.error(f"SHARE GET THUMBNAIL ERROR: {e}")
+        return "Not found", 404
+
+
 # ── Logout / data deletion (no require_auth — must work even if expired) ──
 
 @app.route('/logout', methods=['POST'])
@@ -1236,6 +1767,7 @@ def logout():
             phone_code_hashes.pop(phone, None)
             cache_invalidate(phone)
             log_security_event("LOGOUT", "User logged out", phone)
+            delete_user_share_links(phone)
 
         # Purge API credentials so next visit requires re-setup
         _purge_api_session(api_sid)
@@ -1285,6 +1817,7 @@ def delete_data():
 
         cache_invalidate(phone)
         log_security_event("DATA_DELETED", "All data deleted", phone)
+        delete_user_share_links(phone)
 
         resp = make_response(jsonify({"status": "success", "message": "All data deleted"}))
         resp.delete_cookie('session_token', path='/')
